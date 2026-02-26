@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+
+# uv
+.python-version
+
+# Environment
+.env
+
+# Data
+memory/
+docs/
+
+# macOS
+.DS_Store

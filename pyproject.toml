@@ -1,0 +1,16 @@
+[project]
+name = "multi-agent-system"
+version = "0.1.0"
+description = "Production-quality multi-agent AI system with orchestrator/specialist architecture"
+requires-python = ">=3.12"
+dependencies = [
+    "backoff>=2.2.1",
+    "duckduckgo-search==7.3.2",
+    "fastapi==0.115.6",
+    "pdfminer-six>=20260107",
+    "pydantic==2.10.4",
+    "python-multipart==0.0.20",
+    "qdrant-client==1.12.1",
+    "requests==2.32.3",
+    "uvicorn[standard]==0.32.1",
+]
