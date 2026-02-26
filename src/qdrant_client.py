@@ -28,22 +28,30 @@ def _get_client() -> QdrantClient:
 
 @qdrant_retry
 def create_collection(name: str, vector_size: int = 768) -> None:
-    """Create a Qdrant collection if it does not already exist.
+    """Create a Qdrant collection with named dense + sparse vectors if it does not exist.
+
+    Uses named vector configs so that hybrid (dense + sparse) search can be
+    performed via RRF fusion at query time.
 
     Args:
         name:        Collection name.
-        vector_size: Dimensionality of the embedding vectors (default 768 for
-                     nomic-embed-text).
+        vector_size: Dimensionality of the dense embedding vectors (default 768
+                     for nomic-embed-text).
     """
     client = _get_client()
     existing = {c.name for c in client.get_collections().collections}
     if name not in existing:
         client.create_collection(
             collection_name=name,
-            vectors_config=qmodels.VectorParams(
-                size=vector_size,
-                distance=qmodels.Distance.COSINE,
-            ),
+            vectors_config={
+                "dense": qmodels.VectorParams(
+                    size=vector_size,
+                    distance=qmodels.Distance.COSINE,
+                ),
+            },
+            sparse_vectors_config={
+                "sparse": qmodels.SparseVectorParams(),
+            },
         )
         print(f"[Qdrant] Created collection '{name}' (vector_size={vector_size})")
     else:
@@ -56,19 +64,27 @@ def upsert(collection: str, points: list[dict]) -> None:
 
     Args:
         collection: Target collection name.
-        points:     List of dicts with keys ``id``, ``vector``, ``payload``.
+        points:     List of dicts with keys ``id``, ``vector``, ``payload``,
+                    and optionally ``sparse_indices`` / ``sparse_values``.
                     The payload should contain ``text``, ``source_file``, and
                     ``chunk_index``.
     """
     client = _get_client()
-    qdrant_points = [
-        qmodels.PointStruct(
-            id=p["id"],
-            vector=p["vector"],
-            payload=p["payload"],
+    qdrant_points = []
+    for p in points:
+        vector: dict = {"dense": p["vector"]}
+        if "sparse_indices" in p and "sparse_values" in p:
+            vector["sparse"] = qmodels.SparseVector(
+                indices=p["sparse_indices"],
+                values=p["sparse_values"],
+            )
+        qdrant_points.append(
+            qmodels.PointStruct(
+                id=p["id"],
+                vector=vector,
+                payload=p["payload"],
+            )
         )
-        for p in points
-    ]
     client.upsert(collection_name=collection, points=qdrant_points)
 
 
@@ -98,7 +114,7 @@ def search_with_filter(
     client = _get_client()
     results = client.search(
         collection_name=collection,
-        query_vector=query_vector,
+        query_vector=("dense", query_vector),
         query_filter=query_filter,
         limit=top_k,
         score_threshold=score_threshold,
@@ -111,30 +127,70 @@ def search_with_filter(
 def search(
     collection: str,
     query_vector: list[float],
+    sparse_indices: list[int] | None = None,
+    sparse_values: list[float] | None = None,
     top_k: int = 5,
     score_threshold: float | None = None,
 ) -> list[dict]:
-    """Search a collection and return the top-k results above *score_threshold*.
+    """Search a collection using hybrid (dense + sparse) RRF fusion.
+
+    When ``sparse_indices`` and ``sparse_values`` are provided, runs a
+    two-branch prefetch (dense HNSW + sparse keyword) and combines them with
+    Reciprocal Rank Fusion.  Falls back to dense-only search when sparse
+    vectors are omitted.
+
+    ``score_threshold`` is applied to the dense prefetch branch only (cosine
+    similarity gate before RRF).  It has no effect on the sparse branch or the
+    final RRF scores, which are on a different scale.
 
     Args:
         collection:      Collection name.
-        query_vector:    Embedding of the query.
+        query_vector:    Dense embedding of the query.
+        sparse_indices:  Token indices of the sparse query vector.
+        sparse_values:   TF weights corresponding to *sparse_indices*.
         top_k:           Number of results to return.
-        score_threshold: Minimum cosine similarity score; results below this
-                         are excluded. If None, all results are returned.
+        score_threshold: Minimum cosine similarity for dense prefetch candidates.
 
     Returns:
         List of dicts with keys ``text``, ``source_file``, ``chunk_index``,
         and ``score``.
     """
     client = _get_client()
-    results = client.search(
-        collection_name=collection,
-        query_vector=query_vector,
-        limit=top_k,
-        score_threshold=score_threshold,
-        with_payload=True,
-    )
+
+    if sparse_indices is not None and sparse_values is not None:
+        prefetch = [
+            qmodels.Prefetch(
+                query=qmodels.SparseVector(
+                    indices=sparse_indices,
+                    values=sparse_values,
+                ),
+                using="sparse",
+                limit=top_k * 3,
+            ),
+            qmodels.Prefetch(
+                query=query_vector,
+                using="dense",
+                limit=top_k * 3,
+                score_threshold=score_threshold,
+            ),
+        ]
+        response = client.query_points(
+            collection_name=collection,
+            prefetch=prefetch,
+            query=qmodels.FusionQuery(fusion=qmodels.Fusion.RRF),
+            limit=top_k,
+            with_payload=True,
+        )
+        results = response.points
+    else:
+        results = client.search(
+            collection_name=collection,
+            query_vector=("dense", query_vector),
+            limit=top_k,
+            score_threshold=score_threshold,
+            with_payload=True,
+        )
+
     out = []
     for r in results:
         assert r.payload is not None, (

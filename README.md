@@ -125,6 +125,18 @@ The orchestrator assigns a `confidence_score` to every decision. After a low-con
 **SSE streaming**
 The frontend opens a single `fetch()` stream and receives agent steps as they happen. Users see the reasoning trace build in real time rather than staring at a blank screen.
 
+**Hybrid search (dense + sparse RRF)**
+Document retrieval combines two complementary vector representations fused via Reciprocal Rank Fusion (RRF):
+
+- **Dense vectors** (nomic-embed-text, 768d, HNSW): capture semantic meaning and paraphrase-level similarity.
+- **Sparse vectors** (BM25 via FastEmbed `Qdrant/bm25`, `src/sparse.py`): capture exact keyword matches with proper TF-IDF weighting, especially effective for proper nouns and uncommon terms.
+
+This combination fixes a systematic failure mode of pure semantic search: a resume chunk containing generic skills and experience bullets looks semantically similar to *any* question about *any* person's background. BM25's IDF component automatically down-weights corpus-wide common tokens ("skills", "experience") and amplifies discriminative ones (names, rare keywords), so "who is Alice Smith" retrieves Alice Smith's documents rather than the nearest semantic neighbour.
+
+Sparse vectors are produced by FastEmbed's BM25 model (~few MB, downloaded to `~/.cache/fastembed` on first use). The score threshold applies to the dense prefetch branch only (cosine similarity gate before RRF); the final RRF score fuses rank positions from both branches independently of absolute similarity.
+
+*Trade-off:* the hybrid schema stores two vectors per chunk (~2× the storage vs. dense-only) and requires two prefetch passes at query time. For the target workload (thousands of chunks, millisecond-class HNSW search) this is negligible.
+
 **Qdrant for document RAG**
 Document chunks are embedded and stored in Qdrant rather than a general-purpose database for two reasons. First, Qdrant's HNSW index makes approximate nearest-neighbour search over thousands of chunks fast without a full scan. Second, Qdrant's payload filtering lets the RAG specialist scope searches to specific collections or metadata fields without a separate SQL join.
 
@@ -151,6 +163,7 @@ No API key, no rate-limit tiers for moderate use, and entirely client-side — k
 - **DuckDuckGo reliability** — the unofficial DDGS API can be rate-limited or blocked; a production deployment should use a paid search API (Brave, Tavily, …).
 - **Observability** — add [Langfuse](https://langfuse.com/) (self-hostable) for persistent trace history, per-span latency breakdowns, and cross-session analytics. The existing SSE trace covers real-time visibility but traces are lost on page refresh; Langfuse also enables building an evaluation dataset from real queries.
 - **RAG evaluation** — no systematic measurement of retrieval quality or answer faithfulness. [RAGAS](https://docs.ragas.io/) can score context precision, context recall, and answer correctness against a golden dataset, making it possible to detect regressions when swapping models or changing chunk parameters.
+- **RAG score threshold calibration** — `RAG_SCORE_THRESHOLD` (default 0.55, overridable via env var) is currently set by intuition. For a production system, the threshold should be tuned empirically: collect a representative query set, plot the score distribution of relevant vs. irrelevant chunks, and pick a threshold that maximises recall while holding precision above an acceptable floor. A RAGAS evaluation run provides exactly this data.
 - **Buffered agent steps** — the orchestrator computes all steps before the server begins emitting SSE events. Refactoring the orchestrator to `yield` steps as it works (and threading that generator through the SSE endpoint) would give true real-time step visibility.
 - **Memory: selective injection** — all stored facts are injected on every request. With many sessions this wastes tokens on irrelevant context; a production system would filter facts by relevance (semantic search) or recency before injection.
 - **Memory: contradiction handling** — facts are only appended, never updated. If a user says "I use a VPS" then later "I switched to bare metal", both facts persist. A production system would detect conflicts and supersede outdated facts.

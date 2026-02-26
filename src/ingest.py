@@ -14,6 +14,7 @@ from pdfminer.high_level import extract_text as _pdf_extract
 import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.config import CHUNK_OVERLAP, CHUNK_SIZE, COLLECTION_NAME
+from src.sparse import compute_sparse
 
 
 # ── Text extraction ───────────────────────────────────────────────────────────
@@ -135,16 +136,19 @@ def ingest_file(filepath: str | Path) -> int:
     # 3. Ensure collection exists
     qdrant.create_collection(COLLECTION_NAME)
 
-    # 4. Embed + upsert in batches
+    # 4. Embed + sparse encode + upsert in batches
     points: list[dict] = []
     for i, chunk in enumerate(chunks):
         if i % 10 == 0:
             print(f"[Ingest] Embedding chunk {i+1}/{len(chunks)} …", end="\r")
         vector = ollama.embed(chunk)
+        sparse_indices, sparse_values = compute_sparse(chunk)
         points.append(
             {
                 "id": _point_id(path.name, i),
                 "vector": vector,
+                "sparse_indices": sparse_indices,
+                "sparse_values": sparse_values,
                 "payload": {
                     "text": chunk,
                     "source_file": path.name,

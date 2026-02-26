@@ -9,6 +9,7 @@ import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.agents.base import BaseAgent
 from src.config import COLLECTION_NAME, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
+from src.sparse import compute_sparse
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
@@ -271,12 +272,16 @@ class Orchestrator(BaseAgent):
             return ResearchPlan(sub_questions=[question])
 
     def _retrieve(self, query: str) -> list[dict]:
-        """Embed *query* and search Qdrant. Returns raw hits."""
+        """Embed *query* and search Qdrant using hybrid dense + sparse RRF."""
         try:
             query_vector = ollama.embed(query)
+            sparse_indices, sparse_values = compute_sparse(query)
             return qdrant.search(
                 COLLECTION_NAME, query_vector,
-                top_k=TOP_K, score_threshold=RAG_SCORE_THRESHOLD,
+                sparse_indices=sparse_indices,
+                sparse_values=sparse_values,
+                top_k=TOP_K,
+                score_threshold=RAG_SCORE_THRESHOLD,
             )
         except Exception:
             return []
