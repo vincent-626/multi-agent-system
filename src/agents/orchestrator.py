@@ -367,5 +367,5 @@ class Orchestrator(BaseAgent):
             f"All gathered evidence:\n{evidence_text}\n\n"
             "Write a clear, complete, well-structured answer based on the evidence above."
         )
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_SYNTH_SYSTEM, think=False, timeout=300)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_SYNTH_SYSTEM, think=False, timeout=600)
         return ollama.strip_thinking(raw), ollama.extract_thinking(raw)
