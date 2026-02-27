@@ -11,8 +11,8 @@ __pycache__/
 .env
 
 # Data
-memory/
-docs/
+/memory/
+/docs/
 
 # macOS
 .DS_Store
