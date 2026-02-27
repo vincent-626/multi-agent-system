@@ -125,8 +125,8 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
-def _stream_query(question: str, user_id: str):
-    """Generator that runs the orchestrator and yields SSE events.
+async def _stream_query(question: str, user_id: str):
+    """Async generator that runs the orchestrator and yields SSE events.
 
     Args:
         question: The user's question.
@@ -139,7 +139,7 @@ def _stream_query(question: str, user_id: str):
     orchestrator = Orchestrator(memory=memory)
 
     try:
-        for item in orchestrator.run(question=question, short_term=memory, user_id=user_id):
+        async for item in orchestrator.run(question=question, short_term=memory, user_id=user_id):
             if isinstance(item, AgentStep):
                 yield _sse(
                     {

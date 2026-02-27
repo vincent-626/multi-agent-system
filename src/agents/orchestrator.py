@@ -1,18 +1,21 @@
-"""Research orchestrator — decomposes questions, retrieves evidence iteratively,
-identifies gaps, and synthesises a final answer."""
+"""
+Research orchestrator — decomposes questions, retrieves evidence iteratively,
+identifies gaps, and synthesises a final answer.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Generator
+import asyncio
+from collections.abc import AsyncGenerator
 
 import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.agents.base import BaseAgent
 from src.config import COLLECTION_NAME, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
-from src.sparse import compute_sparse
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
+from src.sparse import compute_sparse
 from src.tools.calculator import calculate
 from src.tools.web_search import web_search
 
@@ -78,12 +81,12 @@ class Orchestrator(BaseAgent):
             memory=memory,
         )
 
-    def run(  # type: ignore[override]
+    async def run(
         self,
         question: str,
         short_term: ShortTermMemory,
         user_id: str = "anonymous",
-    ) -> Generator[AgentStep | FinalResponse, None, None]:
+    ) -> AsyncGenerator[AgentStep | FinalResponse, None]:
         """Run the research loop, yielding steps and a final response.
 
         Args:
@@ -104,7 +107,7 @@ class Orchestrator(BaseAgent):
         memory_context = format_for_prompt(facts)
 
         # ── 2. Decompose question into sub-questions ───────────────────────────
-        plan = self._decompose(question, memory_context)
+        plan = await self._decompose(question, memory_context)
         yield self._log_step(
             action="decompose",
             input_text=question,
@@ -113,8 +116,9 @@ class Orchestrator(BaseAgent):
 
         # ── 3. Conversational fast-path ───────────────────────────────────────
         if plan.is_conversational:
-            raw = ollama.chat(
-                prompt=question,
+            raw = await asyncio.to_thread(
+                ollama.chat,
+                question,
                 system="You are a helpful assistant. Reply conversationally and concisely.",
                 think=False,
             )
@@ -136,7 +140,7 @@ class Orchestrator(BaseAgent):
                 output_text=result,
                 tool_used="calculator",
             )
-            answer, thinking = self._synthesise(question, memory_context, [
+            answer, thinking = await self._synthesise(question, memory_context, [
                 {"question": plan.calculator_expression, "context": result, "sources": [], "web_sources": []}
             ])
             yield self._log_step(action="synthesise", input_text=question, output_text=answer, thinking=thinking)
@@ -145,7 +149,7 @@ class Orchestrator(BaseAgent):
                 sources=[], web_sources=[], confidence="high", from_memory=False,
             )
             yield response
-            extract_and_save(user_id, question, response)
+            await asyncio.to_thread(extract_and_save, user_id, question, response)
             return
 
         # ── 5. Research loop ──────────────────────────────────────────────────
@@ -164,7 +168,7 @@ class Orchestrator(BaseAgent):
 
             # ── 5a. Retrieve for each pending doc query ───────────────────────
             for sq in pending_doc_queries:
-                hits = self._retrieve(sq)
+                hits = await self._retrieve(sq)
 
                 # Deduplicate: keep only chunks not seen in previous retrievals
                 new_hits = [
@@ -196,7 +200,7 @@ class Orchestrator(BaseAgent):
 
             # ── 5b. Web search for each pending web query ─────────────────────
             for wq in pending_web_queries:
-                summary, urls = self._web_search(wq)
+                summary, urls = await self._web_search(wq)
                 all_web_sources.extend(urls)
                 evidence.append({"question": wq, "context": summary, "sources": [], "web_sources": urls})
                 yield self._log_step(
@@ -221,7 +225,7 @@ class Orchestrator(BaseAgent):
 
             # ── 5d. Gap analysis with coverage context ────────────────────────
             attempted_queries = [e["question"] for e in evidence]
-            gap = self._identify_gaps(question, evidence, attempted_queries, len(seen_chunks))
+            gap = await self._identify_gaps(question, evidence, attempted_queries, len(seen_chunks))
             yield self._log_step(
                 action="gap_analysis",
                 input_text=question,
@@ -238,7 +242,7 @@ class Orchestrator(BaseAgent):
                 break
 
         # ── 6. Synthesise ─────────────────────────────────────────────────────
-        answer, thinking = self._synthesise(question, memory_context, evidence)
+        answer, thinking = await self._synthesise(question, memory_context, evidence)
         yield self._log_step(
             action="synthesise",
             input_text=question,
@@ -256,27 +260,28 @@ class Orchestrator(BaseAgent):
             from_memory=False,
         )
         yield response
-        extract_and_save(user_id, question, response)
+        await asyncio.to_thread(extract_and_save, user_id, question, response)
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
-    def _decompose(self, question: str, memory_context: str) -> ResearchPlan:
+    async def _decompose(self, question: str, memory_context: str) -> ResearchPlan:
         """Break *question* into sub-questions via an LLM call."""
         prompt = (
             f"{memory_context}\n\n" if memory_context else ""
         ) + f"Question: {question}\n\nDecompose this into sub-questions. Respond with JSON only."
-        raw = ollama.chat(prompt=prompt, system=_DECOMPOSE_SYSTEM, think=False)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_DECOMPOSE_SYSTEM, think=False)
         try:
             return ollama.parse_json_response(raw, ResearchPlan)
         except ValueError:
             return ResearchPlan(sub_questions=[question])
 
-    def _retrieve(self, query: str) -> list[dict]:
+    async def _retrieve(self, query: str) -> list[dict]:
         """Embed *query* and search Qdrant using hybrid dense + sparse RRF."""
         try:
-            query_vector = ollama.embed(query)
-            sparse_indices, sparse_values = compute_sparse(query)
-            return qdrant.search(
+            query_vector = await asyncio.to_thread(ollama.embed, query)
+            sparse_indices, sparse_values = await asyncio.to_thread(compute_sparse, query)
+            return await asyncio.to_thread(
+                qdrant.search,
                 COLLECTION_NAME, query_vector,
                 sparse_indices=sparse_indices,
                 sparse_values=sparse_values,
@@ -294,25 +299,23 @@ class Orchestrator(BaseAgent):
         ]
         return "\n\n".join(parts)
 
-    def _web_search(self, query: str) -> tuple[str, list[str]]:
+    async def _web_search(self, query: str) -> tuple[str, list[str]]:
         """Run a web search and summarise results. Returns (summary, urls)."""
-        result = web_search(query)
+        result = await asyncio.to_thread(web_search, query)
         if not result.results:
             return "No results found.", []
 
         snippets = "\n".join(f"- {r['title']}: {r['snippet']}" for r in result.results)
-        summary_raw = ollama.chat(
-            prompt=(
-                f"Summarise these search results for: {query}\n\n{snippets}\n\n"
-                "Give a concise, factual summary."
-            ),
+        summary_raw = await asyncio.to_thread(
+            ollama.chat,
+            f"Summarise these search results for: {query}\n\n{snippets}\n\nGive a concise, factual summary.",
             system="You are a helpful assistant that summarises web search results.",
             think=False,
         )
         urls = [r["url"] for r in result.results if r.get("url")]
         return ollama.strip_thinking(summary_raw), urls
 
-    def _identify_gaps(
+    async def _identify_gaps(
         self,
         question: str,
         evidence: list[dict],
@@ -340,13 +343,13 @@ class Orchestrator(BaseAgent):
             "Is this sufficient to fully answer the original question? "
             "If not, what specific gaps remain? Respond with JSON only."
         )
-        raw = ollama.chat(prompt=prompt, system=_GAP_SYSTEM, think=False)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_GAP_SYSTEM, think=False)
         try:
             return ollama.parse_json_response(raw, GapAnalysis)
         except ValueError:
             return GapAnalysis(is_sufficient=True, reasoning="Gap analysis parse failed — proceeding to synthesis.")
 
-    def _synthesise(
+    async def _synthesise(
         self, question: str, memory_context: str, evidence: list[dict]
     ) -> tuple[str, str]:
         """Synthesise a final answer from all gathered evidence."""
@@ -360,5 +363,5 @@ class Orchestrator(BaseAgent):
             f"All gathered evidence:\n{evidence_text}\n\n"
             "Write a clear, complete, well-structured answer based on the evidence above."
         )
-        raw = ollama.chat(prompt=prompt, system=_SYNTH_SYSTEM, think=False, timeout=300)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_SYNTH_SYSTEM, think=False, timeout=300)
         return ollama.strip_thinking(raw), ollama.extract_thinking(raw)
