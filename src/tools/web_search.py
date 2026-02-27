@@ -1,6 +1,7 @@
 """DuckDuckGo web search tool — no API key required."""
 
 from __future__ import annotations
+from duckduckgo_search import DDGS
 
 from src.config import WEB_SEARCH_MAX_RESULTS
 from src.schemas import WebSearchResult
@@ -21,8 +22,6 @@ def web_search(query: str) -> WebSearchResult:
         failure a graceful error result is returned instead of raising.
     """
     try:
-        from duckduckgo_search import DDGS  # local import to keep startup fast
-
         results: list[dict] = []
         with DDGS() as ddgs:
             for r in ddgs.text(query, max_results=WEB_SEARCH_MAX_RESULTS):
