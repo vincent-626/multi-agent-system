@@ -81,11 +81,12 @@ class FinalResponse(BaseModel):
     """The complete response returned to the caller."""
 
     answer: str
-    steps: list[AgentStep]   # full reasoning trace
-    sources: list[str]        # document source files used
-    web_sources: list[str]    # URLs returned by web search (empty if unused)
+    steps: list[AgentStep]    # full reasoning trace
+    sources: list[str]         # document source files used
+    web_sources: list[str]     # URLs returned by web search (empty if unused)
     confidence: str
-    from_memory: bool         # whether the answer came from long-term memory
+    from_memory: bool          # whether the answer came from long-term memory
+    contexts: list[str] = []   # raw retrieved chunk texts (used by eval pipeline)
 
 
 class QueryRequest(BaseModel):

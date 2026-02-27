@@ -1,0 +1,77 @@
+[
+  {
+    "id": 1,
+    "question": "What are the four fundamental forces of nature, and which particles mediate each one?",
+    "category": "factual"
+  },
+  {
+    "id": 2,
+    "question": "When was the Higgs boson experimentally confirmed, and at which facility?",
+    "category": "factual"
+  },
+  {
+    "id": 3,
+    "question": "What are the six flavours of quarks?",
+    "category": "factual"
+  },
+  {
+    "id": 4,
+    "question": "What is the approximate circumference of the Large Hadron Collider?",
+    "category": "factual"
+  },
+  {
+    "id": 5,
+    "question": "What does the Standard Model of particle physics describe?",
+    "category": "factual"
+  },
+  {
+    "id": 6,
+    "question": "What happens when a particle meets its corresponding antiparticle?",
+    "category": "factual"
+  },
+  {
+    "id": 7,
+    "question": "What is quantum superposition?",
+    "category": "factual"
+  },
+  {
+    "id": 8,
+    "question": "In which country is CERN headquartered, and how many member states does it have?",
+    "category": "factual"
+  },
+  {
+    "id": 9,
+    "question": "Which particle mediates the strong nuclear force, and how does it relate to quark confinement inside hadrons?",
+    "category": "multi_hop"
+  },
+  {
+    "id": 10,
+    "question": "The Standard Model successfully unifies three of the four fundamental forces — which force does it fail to incorporate, and which theory currently describes that force?",
+    "category": "multi_hop"
+  },
+  {
+    "id": 11,
+    "question": "What are hadrons, and how do baryons and mesons differ in their quark composition?",
+    "category": "multi_hop"
+  },
+  {
+    "id": 12,
+    "question": "How do particle accelerators like the LHC provide experimental evidence for theoretical predictions made by the Standard Model?",
+    "category": "multi_hop"
+  },
+  {
+    "id": 13,
+    "question": "What is the annual operating budget breakdown by department at CERN?",
+    "category": "out_of_scope"
+  },
+  {
+    "id": 14,
+    "question": "Which particle physics experiments are scheduled to begin construction in 2027?",
+    "category": "out_of_scope"
+  },
+  {
+    "id": 15,
+    "question": "What undergraduate GPA is required to apply for CERN's summer student programme?",
+    "category": "out_of_scope"
+  }
+]

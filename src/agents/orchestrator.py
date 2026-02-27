@@ -156,6 +156,7 @@ class Orchestrator(BaseAgent):
         evidence: list[dict] = []
         all_sources: list[str] = []
         all_web_sources: list[str] = []
+        all_context_texts: list[str] = []
 
         # Track seen chunks by (source_file, chunk_index) to avoid redundancy
         seen_chunks: set[tuple[str, int]] = set()
@@ -181,6 +182,7 @@ class Orchestrator(BaseAgent):
                 ctx = self._format_hits(new_hits)
                 srcs = list(dict.fromkeys(h["source_file"] for h in new_hits))
                 all_sources.extend(srcs)
+                all_context_texts.extend(h["text"] for h in new_hits)
                 evidence.append({"question": sq, "context": ctx, "sources": srcs, "web_sources": []})
 
                 skipped = len(hits) - len(new_hits)
@@ -258,6 +260,7 @@ class Orchestrator(BaseAgent):
             web_sources=list(dict.fromkeys(all_web_sources)),
             confidence="high" if any(e["sources"] or e["web_sources"] for e in evidence) else "medium",
             from_memory=False,
+            contexts=all_context_texts,
         )
         yield response
         await asyncio.to_thread(extract_and_save, user_id, question, response)
