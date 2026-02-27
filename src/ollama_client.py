@@ -39,17 +39,27 @@ def embed(text: str) -> list[float]:
 
 
 @http_retry
-def chat(prompt: str, system: str = "", think: bool | None = None, timeout: int = 120) -> str:
+def chat(
+    prompt: str,
+    system: str = "",
+    think: bool | None = None,
+    timeout: int = 120,
+    model: str | None = None,
+) -> str:
     """Non-streaming chat call. Returns the full response string.
 
     Retries up to 3 times with exponential backoff on transient errors.
 
     Args:
-        prompt: The user message.
-        system: Optional system prompt.
-        think:  Override the global LLM_THINK setting for this call.
-                Pass False for structured JSON calls where thinking adds
-                latency without improving output quality.
+        prompt:  The user message.
+        system:  Optional system prompt.
+        think:   Override the global LLM_THINK setting for this call.
+                 Pass False for structured JSON calls where thinking adds
+                 latency without improving output quality.
+        timeout: Request timeout in seconds.
+        model:   Override the model for this call. Defaults to LLM_MODEL.
+                 Pass FAST_MODEL for structured JSON tasks that do not need
+                 the full capable model.
 
     Raises:
         RuntimeError: if Ollama is unreachable after all retries.
@@ -61,7 +71,12 @@ def chat(prompt: str, system: str = "", think: bool | None = None, timeout: int 
 
     resp = requests.post(
         f"{OLLAMA_BASE_URL}/api/chat",
-        json={"model": LLM_MODEL, "messages": messages, "stream": False, "think": LLM_THINK if think is None else think},
+        json={
+            "model": model or LLM_MODEL,
+            "messages": messages,
+            "stream": False,
+            "think": LLM_THINK if think is None else think,
+        },
         timeout=timeout,
     )
     resp.raise_for_status()

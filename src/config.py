@@ -4,7 +4,8 @@ import os
 
 # ── Ollama ────────────────────────────────────────────────────────────────────
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen3")
+LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen3")          # capable model — synthesis, conversational
+FAST_MODEL: str = os.getenv("FAST_MODEL", "qwen3:1.7b")   # fast model — structured JSON, summaries
 EMBED_MODEL: str = os.getenv("EMBED_MODEL", "nomic-embed-text")
 LLM_THINK: bool = os.getenv("LLM_THINK", "true").lower() == "true"
 

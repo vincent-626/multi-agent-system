@@ -110,6 +110,7 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
         List of fact strings that were saved (may be empty).
     """
     import src.ollama_client as ollama
+    from src.config import FAST_MODEL
 
     prompt = (
         f"Conversation:\n"
@@ -126,6 +127,7 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
     try:
         raw = ollama.chat(
             prompt=prompt,
+            model=FAST_MODEL,
             system=(
                 "You extract memorable facts about users from conversations. "
                 "Be concise and specific. Only record what the user revealed about themselves."

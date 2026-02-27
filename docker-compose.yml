@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    entrypoint: ["/bin/sh", "-c", "ollama pull qwen3 && ollama pull nomic-embed-text"]
+    entrypoint: ["/bin/sh", "-c", "ollama pull qwen3 && ollama pull qwen3:1.7b && ollama pull nomic-embed-text"]
     restart: "no"
 
   qdrant:
@@ -53,6 +53,7 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - LLM_MODEL=qwen3
+      - FAST_MODEL=qwen3:1.7b
       - QDRANT_URL=http://qdrant:6333
     volumes:
       - ./docs:/app/docs

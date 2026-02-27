@@ -11,7 +11,7 @@ from collections.abc import AsyncGenerator
 import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.agents.base import BaseAgent
-from src.config import COLLECTION_NAME, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
+from src.config import COLLECTION_NAME, FAST_MODEL, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
@@ -269,7 +269,7 @@ class Orchestrator(BaseAgent):
         prompt = (
             f"{memory_context}\n\n" if memory_context else ""
         ) + f"Question: {question}\n\nDecompose this into sub-questions. Respond with JSON only."
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_DECOMPOSE_SYSTEM, think=False)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_DECOMPOSE_SYSTEM, think=False, model=FAST_MODEL)
         try:
             return ollama.parse_json_response(raw, ResearchPlan)
         except ValueError:
@@ -311,6 +311,7 @@ class Orchestrator(BaseAgent):
             f"Summarise these search results for: {query}\n\n{snippets}\n\nGive a concise, factual summary.",
             system="You are a helpful assistant that summarises web search results.",
             think=False,
+            model=FAST_MODEL,
         )
         urls = [r["url"] for r in result.results if r.get("url")]
         return ollama.strip_thinking(summary_raw), urls
@@ -343,7 +344,7 @@ class Orchestrator(BaseAgent):
             "Is this sufficient to fully answer the original question? "
             "If not, what specific gaps remain? Respond with JSON only."
         )
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_GAP_SYSTEM, think=False)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_GAP_SYSTEM, think=False, model=FAST_MODEL)
         try:
             return ollama.parse_json_response(raw, GapAnalysis)
         except ValueError:
