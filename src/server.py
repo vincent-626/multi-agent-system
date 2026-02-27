@@ -9,13 +9,16 @@ import traceback
 from pathlib import Path
 
 import requests as _requests
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Security, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Security, UploadFile
 from fastapi.security import APIKeyQuery
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from src.agents.orchestrator import Orchestrator
-from src.config import API_KEY, OLLAMA_BASE_URL, QDRANT_URL
+from src.config import API_KEY, OLLAMA_BASE_URL, QDRANT_URL, RATE_LIMIT_HISTORY, RATE_LIMIT_INGEST, RATE_LIMIT_QUERY
 from src.ingest import ingest_file
 from src.memory.chat_history import get_messages
 from src.memory.short_term import ShortTermMemory
@@ -34,7 +37,11 @@ def _check_api_key(key: str | None = Security(_api_key_query)) -> None:
         raise HTTPException(status_code=403, detail="Invalid or missing API key.")
 
 
+_limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="Multi-Agent System", version="1.0.0")
+app.state.limiter = _limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # Serve the single-file frontend
 _static_dir = Path(__file__).parent.parent / "static"
@@ -54,7 +61,8 @@ async def root() -> HTMLResponse:
 
 
 @app.post("/ingest")
-async def ingest_endpoint(file: UploadFile = File(...), _: None = Depends(_check_api_key)) -> dict:
+@_limiter.limit(RATE_LIMIT_INGEST)
+async def ingest_endpoint(request: Request, file: UploadFile = File(...), _: None = Depends(_check_api_key)) -> dict:
     """Upload and ingest a document into the vector store.
 
     Accepts a .pdf or .txt file via multipart/form-data.
@@ -78,7 +86,9 @@ async def ingest_endpoint(file: UploadFile = File(...), _: None = Depends(_check
 
 
 @app.get("/history")
+@_limiter.limit(RATE_LIMIT_HISTORY)
 async def history_endpoint(
+    request: Request,
     user_id: str = Query(..., min_length=1),
     _: None = Depends(_check_api_key),
 ) -> list[dict]:
@@ -92,7 +102,8 @@ async def history_endpoint(
 
 
 @app.post("/query")
-async def query_endpoint(body: QueryRequest, _: None = Depends(_check_api_key)) -> StreamingResponse:
+@_limiter.limit(RATE_LIMIT_QUERY)
+async def query_endpoint(request: Request, body: QueryRequest, _: None = Depends(_check_api_key)) -> StreamingResponse:
     """Process a question and stream back agent steps + final answer via SSE.
 
     Each Server-Sent Event is a JSON object on a ``data:`` line.

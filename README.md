@@ -178,4 +178,3 @@ No API key, no rate-limit tiers for moderate use, and entirely client-side — k
 - **Memory: consolidation** — related facts accumulate independently over time and can become noisy. Periodically merging similar facts (e.g. via an LLM summarisation pass) would keep the fact store concise.
 - **Memory: triggered extraction** — fact extraction runs after every conversation, including ones where nothing memorable was shared (e.g. a calculator query). Skipping extraction when the conversation is unlikely to contain user-relevant facts would save an LLM call per request.
 - **Memory: user management** — there is no interface to view, edit, or delete individual facts. Relevant for transparency and GDPR right-to-erasure.
-- **Rate limiting** — the API has no per-client rate limiting; add a middleware (e.g. `slowapi`) before any public exposure.
