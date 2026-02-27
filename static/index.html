@@ -39,6 +39,7 @@
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-shrink: 0;
     }
     header h1 { font-size: 1.1rem; font-weight: 700; }
     header p  { font-size: 0.8rem; color: var(--text-dim); }
@@ -65,6 +66,7 @@
       flex-direction: column;
       padding: 20px 16px;
       gap: 20px;
+      flex-shrink: 0;
     }
 
     aside h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
@@ -98,23 +100,51 @@
       color: #1a1d23;
     }
 
-    /* ── Response area ──────────────────────────────────────────── */
+    /* ── Chat thread ─────────────────────────────────────────────── */
     #response-area {
       flex: 1;
       overflow-y: auto;
       padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
     }
 
-    /* ── Spinner ─────────────────────────────────────────────────── */
-    #spinner {
+    /* ── Individual chat entry ───────────────────────────────────── */
+    .chat-entry {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .user-bubble {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px 16px 4px 16px;
+      padding: 10px 16px;
+      max-width: 75%;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .assistant-entry {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ── Spinner (per entry) ─────────────────────────────────────── */
+    .entry-spinner {
       display: none;
       align-items: center;
       gap: 10px;
       color: var(--accent);
       font-size: 0.9rem;
-      padding: 12px 0;
+      padding: 8px 0;
     }
-    #spinner.active { display: flex; }
+    .entry-spinner.active { display: flex; }
 
     .spin-ring {
       width: 18px; height: 18px;
@@ -129,7 +159,6 @@
     details.trace {
       background: var(--bg-dark);
       border-radius: 8px;
-      margin-bottom: 16px;
       overflow: hidden;
     }
     details.trace summary {
@@ -143,7 +172,7 @@
     }
     details.trace summary:hover { background: var(--border); }
 
-    #trace-rows { padding: 4px 0; }
+    .trace-rows { padding: 4px 0; }
 
     .trace-row {
       display: grid;
@@ -156,14 +185,12 @@
       color: var(--text-dim);
     }
     .trace-row:last-child { border-bottom: none; }
-    .trace-row .agent { color: var(--accent); font-weight: 600; }
+    .trace-row .agent  { color: var(--accent); font-weight: 600; }
     .trace-row .action { color: var(--yellow); }
     .trace-row .output { color: var(--text); white-space: pre-wrap; word-break: break-word; }
 
     /* ── Thinking disclosure ──────────────────────────────────────── */
-    .thinking-details {
-      border-bottom: 1px solid var(--border);
-    }
+    .thinking-details { border-bottom: 1px solid var(--border); }
     .thinking-details summary {
       padding: 3px 14px;
       cursor: pointer;
@@ -186,25 +213,22 @@
       border-top: 1px dashed var(--border);
     }
 
-    /* ── Final answer ────────────────────────────────────────────── */
-    #answer-box {
+    /* ── Answer card ─────────────────────────────────────────────── */
+    .answer-card {
       background: #fff;
       border: 1px solid #dde1ea;
       border-radius: 10px;
-      padding: 20px 22px;
-      margin-bottom: 16px;
+      padding: 18px 20px;
       line-height: 1.65;
       font-size: 0.95rem;
       white-space: pre-wrap;
-      display: none;
     }
 
     /* ── Meta badges ─────────────────────────────────────────────── */
-    #meta-row {
+    .meta-row {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-bottom: 20px;
     }
 
     .badge {
@@ -227,6 +251,7 @@
     .badge.web-src     { background: #e8ebf2; }
     .badge.web-src a   { color: var(--accent-dim); text-decoration: none; font-size: 0.72rem; }
     .badge.web-src a:hover { text-decoration: underline; }
+    .badge.history-ts  { background: #f0f0f0; color: #888; font-weight: 400; font-style: italic; }
 
     /* ── Input bar ───────────────────────────────────────────────── */
     .input-bar {
@@ -235,6 +260,7 @@
       padding: 14px 20px;
       display: flex;
       gap: 10px;
+      flex-shrink: 0;
     }
     #question-input {
       flex: 1;
@@ -303,19 +329,7 @@
   <!-- ── Content ─────────────────────────────────────────────────── -->
   <section class="content">
     <div id="response-area">
-      <div id="spinner"><div class="spin-ring"></div> Thinking…</div>
-
-      <!-- Reasoning trace (accordion) -->
-      <details class="trace" id="trace-details">
-        <summary>Reasoning Trace <span id="trace-count"></span></summary>
-        <div id="trace-rows"></div>
-      </details>
-
-      <!-- Final answer -->
-      <div id="answer-box"></div>
-
-      <!-- Badges: confidence / sources / web -->
-      <div id="meta-row"></div>
+      <!-- conversation entries injected here -->
     </div>
 
     <div class="input-bar">
@@ -326,33 +340,33 @@
         autocomplete="off"
       />
       <button class="btn btn-primary" id="submit-btn" onclick="submitQuery()">Ask</button>
-      <button class="btn btn-secondary" id="clear-btn" onclick="clearUI()">Clear</button>
+      <button class="btn btn-secondary" id="clear-btn" onclick="clearThread()">Clear</button>
     </div>
   </section>
 </main>
 
 <script>
 // ── User identity ────────────────────────────────────────────────────────────
-// Generate a UUID on first visit and persist it for the lifetime of the device.
 const USER_ID = (() => {
   const key = 'mas_user_id';
   let id = localStorage.getItem(key);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(key, id);
-  }
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem(key, id); }
   return id;
 })();
 
 // ── API key ───────────────────────────────────────────────────────────────────
 const apiKeyInput = document.getElementById('api-key-input');
 apiKeyInput.value = localStorage.getItem('mas_api_key') || '';
-apiKeyInput.addEventListener('input', () => {
-  localStorage.setItem('mas_api_key', apiKeyInput.value);
-});
+apiKeyInput.addEventListener('input', () => localStorage.setItem('mas_api_key', apiKeyInput.value));
 function apiKeyParam() {
   const k = apiKeyInput.value.trim();
   return k ? '?api_key=' + encodeURIComponent(k) : '';
+}
+function apiKeyQS(existing = '') {
+  const k = apiKeyInput.value.trim();
+  if (!k) return existing;
+  const sep = existing.includes('?') ? '&' : '?';
+  return existing + sep + 'api_key=' + encodeURIComponent(k);
 }
 
 // ── Health check ─────────────────────────────────────────────────────────────
@@ -368,15 +382,13 @@ checkHealth();
 setInterval(checkHealth, 15000);
 
 // ── Upload ───────────────────────────────────────────────────────────────────
-const uploadZone = document.getElementById('upload-zone');
-const fileInput  = document.getElementById('file-input');
+const uploadZone   = document.getElementById('upload-zone');
+const fileInput    = document.getElementById('file-input');
 const uploadStatus = document.getElementById('upload-status');
 
 uploadZone.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => {
-  if (fileInput.files[0]) doUpload(fileInput.files[0]);
-});
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) doUpload(fileInput.files[0]); });
+uploadZone.addEventListener('dragover',  e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
 uploadZone.addEventListener('drop', e => {
   e.preventDefault();
@@ -386,6 +398,7 @@ uploadZone.addEventListener('drop', e => {
 
 async function doUpload(file) {
   uploadStatus.textContent = `Uploading ${file.name}…`;
+  uploadStatus.style.color = '';
   const fd = new FormData();
   fd.append('file', file);
   try {
@@ -398,25 +411,141 @@ async function doUpload(file) {
       uploadStatus.textContent = `✗ ${d.detail || 'Upload failed'}`;
       uploadStatus.style.color = '#c0392b';
     }
-  } catch (e) {
-    uploadStatus.textContent = `✗ Network error`;
+  } catch (_) {
+    uploadStatus.textContent = '✗ Network error';
     uploadStatus.style.color = '#c0392b';
   }
 }
 
-// ── Query + SSE ──────────────────────────────────────────────────────────────
-let activeSource = null;
+// ── Chat thread ───────────────────────────────────────────────────────────────
+const thread = document.getElementById('response-area');
+
+// Load history on init
+async function loadHistory() {
+  try {
+    const url = apiKeyQS(`/history?user_id=${encodeURIComponent(USER_ID)}`);
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const items = await r.json();
+    items.forEach(item => appendHistoryEntry(item));
+    if (items.length > 0) scrollToBottom();
+  } catch (_) {}
+}
+
+function appendHistoryEntry(item) {
+  const { entry } = buildEntry(item.question);
+  const ts = new Date(item.timestamp).toLocaleString();
+  renderAnswer(entry, {
+    answer:      item.answer,
+    sources:     item.sources,
+    web_sources: item.web_sources,
+    confidence:  item.confidence,
+    from_memory: false,
+    timestamp:   ts,
+  });
+  thread.appendChild(entry);
+}
+
+// Build a new empty chat entry, return handles to its inner elements
+function buildEntry(question) {
+  const entry = document.createElement('div');
+  entry.className = 'chat-entry';
+
+  const userBubble = document.createElement('div');
+  userBubble.className = 'user-bubble';
+  userBubble.textContent = question;
+
+  const assistantDiv = document.createElement('div');
+  assistantDiv.className = 'assistant-entry';
+
+  const spinner = document.createElement('div');
+  spinner.className = 'entry-spinner';
+  spinner.innerHTML = '<div class="spin-ring"></div> Thinking…';
+
+  const traceDetails = document.createElement('details');
+  traceDetails.className = 'trace';
+  const traceSummary = document.createElement('summary');
+  traceSummary.innerHTML = 'Reasoning Trace <span class="trace-count"></span>';
+  const traceRowsDiv = document.createElement('div');
+  traceRowsDiv.className = 'trace-rows';
+  traceDetails.appendChild(traceSummary);
+  traceDetails.appendChild(traceRowsDiv);
+  traceDetails.style.display = 'none';
+
+  const answerCard = document.createElement('div');
+  answerCard.className = 'answer-card';
+  answerCard.style.display = 'none';
+
+  const metaRow = document.createElement('div');
+  metaRow.className = 'meta-row';
+
+  assistantDiv.appendChild(spinner);
+  assistantDiv.appendChild(traceDetails);
+  assistantDiv.appendChild(answerCard);
+  assistantDiv.appendChild(metaRow);
+
+  entry.appendChild(userBubble);
+  entry.appendChild(assistantDiv);
+
+  return { entry, spinner, traceDetails, traceSummary, traceRowsDiv, answerCard, metaRow };
+}
+
+function renderAnswer(entry, ev) {
+  const answerCard  = entry.querySelector('.answer-card');
+  const metaRow     = entry.querySelector('.meta-row');
+  const spinner     = entry.querySelector('.entry-spinner');
+  const traceDetails = entry.querySelector('details.trace');
+
+  if (spinner)      { spinner.classList.remove('active'); }
+  if (traceDetails) { traceDetails.open = false; }
+
+  answerCard.textContent = ev.answer;
+  answerCard.style.display = 'block';
+
+  // Confidence
+  const conf = (ev.confidence || 'medium').toLowerCase();
+  metaRow.appendChild(badge(`Confidence: ${conf}`, 'badge conf-' + conf));
+
+  if (ev.from_memory) metaRow.appendChild(badge('From memory', 'badge memory'));
+  if (ev.web_sources && ev.web_sources.length > 0)
+    metaRow.appendChild(badge('Web search used', 'badge web'));
+
+  (ev.sources || []).forEach(s => metaRow.appendChild(badge('📄 ' + s, 'badge source')));
+
+  (ev.web_sources || []).forEach(url => {
+    const b = document.createElement('span');
+    b.className = 'badge web-src';
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = '🔗 ' + truncate(url, 40);
+    b.appendChild(a);
+    metaRow.appendChild(b);
+  });
+
+  if (ev.timestamp)
+    metaRow.appendChild(badge(ev.timestamp, 'badge history-ts'));
+}
+
+// ── Active query state ────────────────────────────────────────────────────────
+let currentEntry = null;
+let stepCount = 0;
 
 function submitQuery() {
   const input = document.getElementById('question-input');
   const q = input.value.trim();
   if (!q) return;
 
-  // Reset UI
-  clearUI(false);
+  input.value = '';
   setLoading(true);
 
-  // Open SSE connection via POST (using fetch + ReadableStream)
+  // Create and attach the new entry immediately
+  const handles = buildEntry(q);
+  handles.spinner.classList.add('active');
+  thread.appendChild(handles.entry);
+  currentEntry = handles;
+  stepCount = 0;
+  scrollToBottom();
+
   fetch('/query' + apiKeyParam(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -431,7 +560,7 @@ function submitQuery() {
         if (done) { setLoading(false); return; }
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete line
+        buffer = lines.pop();
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const raw = line.slice(6).trim();
@@ -445,26 +574,33 @@ function submitQuery() {
     pump();
   }).catch(err => {
     setLoading(false);
-    showError(err.message);
+    if (currentEntry) {
+      const card = currentEntry.answerCard;
+      card.textContent = '⚠ Error: ' + err.message;
+      card.style.display = 'block';
+      card.style.borderColor = '#e85d5d';
+      currentEntry.spinner.classList.remove('active');
+    }
   });
 }
 
-let stepCount = 0;
-
 function handleEvent(ev) {
+  if (!currentEntry) return;
+
   if (ev.type === 'step') {
     stepCount++;
-    document.getElementById('trace-count').textContent = `(${stepCount})`;
-    document.getElementById('trace-details').open = true;
-    const container = document.getElementById('trace-rows');
+    const countEl = currentEntry.traceDetails.querySelector('.trace-count');
+    if (countEl) countEl.textContent = `(${stepCount})`;
+    currentEntry.traceDetails.style.display = '';
+    currentEntry.traceDetails.open = true;
 
     const row = document.createElement('div');
     row.className = 'trace-row';
     row.innerHTML =
       `<span class="agent">${esc(ev.agent)}</span>` +
-      `<span class="action">${esc(ev.action)}${ev.tool_used ? ' ['+esc(ev.tool_used)+']' : ''}</span>` +
+      `<span class="action">${esc(ev.action)}${ev.tool_used ? ' [' + esc(ev.tool_used) + ']' : ''}</span>` +
       `<span class="output">${esc(ev.output || '')}</span>`;
-    container.appendChild(row);
+    currentEntry.traceRowsDiv.appendChild(row);
 
     if (ev.thinking) {
       const details = document.createElement('details');
@@ -476,56 +612,46 @@ function handleEvent(ev) {
       content.textContent = ev.thinking;
       details.appendChild(summary);
       details.appendChild(content);
-      container.appendChild(details);
+      currentEntry.traceRowsDiv.appendChild(details);
     }
 
-    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    scrollToBottom();
   }
 
   if (ev.type === 'final') {
-    const box = document.getElementById('answer-box');
-    box.textContent = ev.answer;
-    box.style.display = 'block';
-    renderMeta(ev);
-    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    renderAnswer(currentEntry.entry, ev);
+    scrollToBottom();
   }
 
   if (ev.type === 'error') {
-    showError(ev.message);
+    const card = currentEntry.answerCard;
+    card.textContent = '⚠ Error: ' + ev.message;
+    card.style.display = 'block';
+    card.style.borderColor = '#e85d5d';
+    currentEntry.spinner.classList.remove('active');
   }
 }
 
-function renderMeta(ev) {
-  const row = document.getElementById('meta-row');
-  row.innerHTML = '';
-
-  // Confidence badge
-  const conf = (ev.confidence || 'medium').toLowerCase();
-  const confClass = conf === 'high' ? 'conf-high' : conf === 'low' ? 'conf-low' : 'conf-medium';
-  row.appendChild(badge(`Confidence: ${conf}`, 'badge ' + confClass));
-
-  // Memory badge
-  if (ev.from_memory) row.appendChild(badge('From memory', 'badge memory'));
-
-  // Web search used badge
-  if (ev.web_sources && ev.web_sources.length > 0)
-    row.appendChild(badge('Web search used', 'badge web'));
-
-  // Document sources
-  (ev.sources || []).forEach(s => row.appendChild(badge('📄 ' + s, 'badge source')));
-
-  // Web sources as links
-  (ev.web_sources || []).forEach(url => {
-    const b = document.createElement('span');
-    b.className = 'badge web-src';
-    const a = document.createElement('a');
-    a.href = url; a.target = '_blank'; a.rel = 'noopener';
-    a.textContent = '🔗 ' + truncate(url, 40);
-    b.appendChild(a);
-    row.appendChild(b);
-  });
+function setLoading(on) {
+  document.getElementById('question-input').disabled = on;
+  document.getElementById('submit-btn').disabled = on;
+  if (!on && currentEntry) {
+    currentEntry.spinner.classList.remove('active');
+    currentEntry = null;
+  }
 }
 
+function clearThread() {
+  thread.innerHTML = '';
+  currentEntry = null;
+  stepCount = 0;
+}
+
+function scrollToBottom() {
+  thread.scrollTop = thread.scrollHeight;
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
 function badge(text, cls) {
   const el = document.createElement('span');
   el.className = cls;
@@ -533,42 +659,21 @@ function badge(text, cls) {
   return el;
 }
 
-function setLoading(on) {
-  document.getElementById('spinner').classList.toggle('active', on);
-  document.getElementById('question-input').disabled = on;
-  document.getElementById('submit-btn').disabled = on;
-}
-
-function clearUI(resetInput = true) {
-  if (resetInput) document.getElementById('question-input').value = '';
-  document.getElementById('trace-rows').innerHTML = '';
-  document.getElementById('trace-count').textContent = '';
-  document.getElementById('answer-box').style.display = 'none';
-  document.getElementById('answer-box').textContent = '';
-  document.getElementById('meta-row').innerHTML = '';
-  document.getElementById('spinner').classList.remove('active');
-  stepCount = 0;
-}
-
-function showError(msg) {
-  const box = document.getElementById('answer-box');
-  box.textContent = '⚠ Error: ' + msg;
-  box.style.display = 'block';
-  box.style.borderColor = '#e85d5d';
-}
-
-// ── Utils ─────────────────────────────────────────────────────────────────────
 function esc(s) {
   return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
+
 function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
 // Submit on Enter
 document.getElementById('question-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitQuery(); }
 });
+
+// Load history on init
+loadHistory();
 </script>
 </body>
 </html>

@@ -12,6 +12,7 @@ import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.agents.base import BaseAgent
 from src.config import COLLECTION_NAME, FAST_MODEL, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
+from src.memory.chat_history import save_message
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
@@ -129,6 +130,7 @@ class Orchestrator(BaseAgent):
                 sources=[], web_sources=[], confidence="high", from_memory=False,
             )
             yield response
+            await asyncio.to_thread(save_message, user_id, question, response)
             return
 
         # ── 4. Calculator fast-path ───────────────────────────────────────────
@@ -149,6 +151,7 @@ class Orchestrator(BaseAgent):
                 sources=[], web_sources=[], confidence="high", from_memory=False,
             )
             yield response
+            await asyncio.to_thread(save_message, user_id, question, response)
             await asyncio.to_thread(extract_and_save, user_id, question, response)
             return
 
@@ -263,6 +266,7 @@ class Orchestrator(BaseAgent):
             contexts=all_context_texts,
         )
         yield response
+        await asyncio.to_thread(save_message, user_id, question, response)
         await asyncio.to_thread(extract_and_save, user_id, question, response)
 
     # ── helpers ───────────────────────────────────────────────────────────────

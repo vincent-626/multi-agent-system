@@ -9,7 +9,7 @@ import traceback
 from pathlib import Path
 
 import requests as _requests
-from fastapi import Depends, FastAPI, File, HTTPException, Security, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Security, UploadFile
 from fastapi.security import APIKeyQuery
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from src.agents.orchestrator import Orchestrator
 from src.config import API_KEY, OLLAMA_BASE_URL, QDRANT_URL
 from src.ingest import ingest_file
+from src.memory.chat_history import get_messages
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, FinalResponse, QueryRequest
 
@@ -74,6 +75,20 @@ async def ingest_endpoint(file: UploadFile = File(...), _: None = Depends(_check
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {"status": "ok", "chunks": n_chunks}
+
+
+@app.get("/history")
+async def history_endpoint(
+    user_id: str = Query(..., min_length=1),
+    _: None = Depends(_check_api_key),
+) -> list[dict]:
+    """Return saved chat history for *user_id*, oldest first.
+
+    Returns:
+        List of ``{"question", "answer", "sources", "web_sources",
+        "confidence", "timestamp"}`` dicts.
+    """
+    return await asyncio.to_thread(get_messages, user_id)
 
 
 @app.post("/query")
