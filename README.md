@@ -155,6 +155,11 @@ The system extracts *facts about the user* from each conversation — preference
 **Exponential backoff on external calls**
 All Ollama and Qdrant calls are wrapped with `backoff.expo` (max 4 attempts, full jitter). Retry logic lives in `src/retry.py` as shared decorators (`http_retry`, `qdrant_retry`) so each client stays focused on its own logic.
 
+**Ollama over vLLM**
+Ollama is used for local model serving rather than vLLM. vLLM's headline advantages — PagedAttention and continuous batching — maximise throughput when many requests arrive concurrently and can be merged into a single forward pass. This system's research loop is inherently sequential (decompose → retrieve → gap analysis → synthesise), so there is no batch to form per user, and low concurrency means PagedAttention's KV cache savings are irrelevant. Ollama also has first-class Apple Silicon support via Metal; vLLM has no Metal backend and would fall back to CPU-only inference on macOS, making it impractical for local development.
+
+*When to reconsider:* a dedicated Linux server with a high-VRAM NVIDIA GPU serving many concurrent users is the point at which vLLM's throughput advantage becomes meaningful. At that scale, full-precision or AWQ-quantised models (vLLM's sweet spot) also outperform GGUF quantisation.
+
 **DuckDuckGo for web search**
 No API key, no rate-limit tiers for moderate use, and entirely client-side — keeping the system fully self-hostable. The `duckduckgo-search` package wraps the public DDGS API.
 
