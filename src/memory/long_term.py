@@ -126,6 +126,7 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
         raw = ollama.chat(
             prompt=prompt,
             model=FAST_MODEL,
+            think=False,
             system=(
                 "You extract memorable facts about users from conversations. "
                 "Be concise and specific. Only record what the user revealed about themselves."
