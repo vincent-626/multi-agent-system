@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import traceback
@@ -68,7 +69,7 @@ async def ingest_endpoint(file: UploadFile = File(...), _: None = Depends(_check
     dest.write_bytes(content)
 
     try:
-        n_chunks = ingest_file(dest)
+        n_chunks = await asyncio.to_thread(ingest_file, dest)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -103,21 +104,17 @@ async def health() -> dict:
     Returns:
         ``{"status": "ok", "ollama": bool, "qdrant": bool}``
     """
-    ollama_ok = False
-    qdrant_ok = False
+    async def _check(url: str) -> bool:
+        try:
+            r = await asyncio.to_thread(_requests.get, url, timeout=3)
+            return r.status_code == 200
+        except Exception:
+            return False
 
-    try:
-        r = _requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
-        ollama_ok = r.status_code == 200
-    except Exception:
-        pass
-
-    try:
-        r = _requests.get(f"{QDRANT_URL}/healthz", timeout=3)
-        qdrant_ok = r.status_code == 200
-    except Exception:
-        pass
-
+    ollama_ok, qdrant_ok = await asyncio.gather(
+        _check(f"{OLLAMA_BASE_URL}/api/tags"),
+        _check(f"{QDRANT_URL}/healthz"),
+    )
     return {"status": "ok", "ollama": ollama_ok, "qdrant": qdrant_ok}
 
 
