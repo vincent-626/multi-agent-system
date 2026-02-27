@@ -3,8 +3,6 @@ Research orchestrator — decomposes questions, retrieves evidence iteratively,
 identifies gaps, and synthesises a final answer.
 """
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import AsyncGenerator
 

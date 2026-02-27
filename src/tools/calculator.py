@@ -1,7 +1,5 @@
 """Safe arithmetic calculator using Python's ast module (never eval)."""
 
-from __future__ import annotations
-
 import ast
 import operator
 from typing import Union

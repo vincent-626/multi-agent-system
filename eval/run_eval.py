@@ -18,8 +18,6 @@ Environment variables (all optional, inherit from .env):
     EMBED_MODEL      default: nomic-embed-text
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

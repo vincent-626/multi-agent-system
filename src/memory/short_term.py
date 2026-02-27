@@ -1,7 +1,5 @@
 """In-session (short-term) conversation memory."""
 
-from __future__ import annotations
-
 from src.schemas import AgentStep
 
 

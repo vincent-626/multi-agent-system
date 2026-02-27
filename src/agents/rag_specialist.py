@@ -1,7 +1,5 @@
 """RAG Specialist — retrieves and summarises information from ingested documents."""
 
-from __future__ import annotations
-
 import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.agents.base import BaseAgent

@@ -20,8 +20,6 @@ Table: memory_facts
 Index: idx_facts_user_id ON memory_facts(user_id)
 """
 
-from __future__ import annotations
-
 import logging
 import sqlite3
 from contextlib import contextmanager

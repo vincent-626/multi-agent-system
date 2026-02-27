@@ -1,7 +1,5 @@
 """BaseAgent — abstract foundation for all agents in the system."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 
 import src.ollama_client as ollama

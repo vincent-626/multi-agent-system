@@ -1,7 +1,5 @@
 """RAG retrieval tool — embeds a query and searches Qdrant."""
 
-from __future__ import annotations
-
 import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.config import COLLECTION_NAME, TOP_K

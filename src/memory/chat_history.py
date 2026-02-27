@@ -18,8 +18,6 @@ Table: chat_messages
 Index: idx_chat_user_id ON chat_messages(user_id)
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sqlite3

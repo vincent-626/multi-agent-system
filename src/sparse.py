@@ -16,8 +16,6 @@ The model ("Qdrant/bm25") is a few MB and is downloaded to
 ~/.cache/fastembed on first use.
 """
 
-from __future__ import annotations
-
 from fastembed import SparseTextEmbedding
 
 _model: SparseTextEmbedding | None = None

@@ -3,8 +3,6 @@
 Uses plain `requests` — no Ollama SDK dependency.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from typing import Generator, Type, TypeVar
