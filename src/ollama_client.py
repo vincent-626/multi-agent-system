@@ -43,7 +43,7 @@ def chat(
     prompt: str,
     system: str = "",
     think: bool | None = None,
-    timeout: int = 120,
+    timeout: int = 300,
     model: str | None = None,
 ) -> str:
     """Non-streaming chat call. Returns the full response string.
@@ -95,7 +95,7 @@ def _open_stream(messages: list[dict]) -> requests.Response:
         f"{OLLAMA_BASE_URL}/api/chat",
         json={"model": LLM_MODEL, "messages": messages, "stream": True, "think": LLM_THINK},
         stream=True,
-        timeout=120,
+        timeout=300,
     )
     resp.raise_for_status()
     return resp
