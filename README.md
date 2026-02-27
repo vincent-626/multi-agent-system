@@ -91,6 +91,10 @@ Each browser generates a UUID on first visit (stored in `localStorage`) that sco
 uv run python -m src.ingest docs/my_document.pdf
 ```
 
+### Demo knowledge base
+
+The reference knowledge base is populated with Wikipedia articles on particle physics. The domain was chosen deliberately: technical terminology (quarks, leptons, bosons, hadronisation) stress-tests keyword discrimination in the sparse vectors; heavy cross-referencing between concepts (e.g. the Standard Model article referencing Higgs, QCD, and electroweak unification) produces natural multi-hop questions; and every factual claim is independently verifiable, making retrieval quality straightforward to evaluate.
+
 ### Adding a dependency
 
 ```bash
