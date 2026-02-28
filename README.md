@@ -140,6 +140,13 @@ The orchestrator operates as a research agent: it decomposes the question into s
 
 The loop is bounded by `MAX_RESEARCH_ITERATIONS` (default 2) to prevent runaway behaviour. This architecture requires a capable reasoning model; the default is `qwen3:8b`, which produces credible decompositions and gap analyses. Smaller models (1–3b) tend to produce shallow sub-questions and unreliable gap detection.
 
+**LLM-based intent classification over a dedicated classifier**
+Before entering the research loop the orchestrator classifies the input and decomposes it into sub-questions in a single LLM call. The alternative — a dedicated lightweight classifier (e.g. fine-tuned BERT/distilBERT) — would be faster and more consistent, but requires labelled training data, a separate model to maintain, and retraining whenever a new route is added.
+
+The LLM approach is preferred here because: (1) classification and decomposition happen in one call with no extra round-trip; (2) new routing paths can be added by updating the prompt rather than retraining; (3) no labelled data exists to train a classifier on.
+
+The main weakness is unreliability with small models. This is mitigated with a defensive fallback: if decomposition produces no sub-questions and no other path applies, the input is treated as conversational.
+
 **Retrieval outside the routing loop**
 Document retrieval (embed + vector search) runs unconditionally before the orchestrator loop whenever documents exist. The retrieved chunks are injected directly into the loop prompt as context; the orchestrator LLM never decides *whether* to search — it only decides what to do *after* seeing the results.
 

@@ -9,7 +9,7 @@ from collections.abc import AsyncGenerator
 import src.ollama_client as ollama
 import src.qdrant_client as qdrant
 from src.agents.base import BaseAgent
-from src.config import COLLECTION_NAME, FAST_MODEL, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
+from src.config import COLLECTION_NAME, FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
 from src.memory.chat_history import save_message
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
@@ -114,7 +114,7 @@ class Orchestrator(BaseAgent):
         )
 
         # ── 3. Conversational fast-path ───────────────────────────────────────
-        if plan.is_conversational:
+        if plan.is_conversational or (not plan.sub_questions and not plan.requires_calculator):
             raw = await asyncio.to_thread(
                 ollama.chat,
                 question,
@@ -274,7 +274,7 @@ class Orchestrator(BaseAgent):
         prompt = (
             f"{memory_context}\n\n" if memory_context else ""
         ) + f"Question: {question}\n\nDecompose this into sub-questions. Respond with JSON only."
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_DECOMPOSE_SYSTEM, think=False, model=FAST_MODEL)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_DECOMPOSE_SYSTEM, think=False, model=LLM_MODEL)
         try:
             return ollama.parse_json_response(raw, ResearchPlan)
         except ValueError:
