@@ -45,15 +45,39 @@ Orchestrator  (src/agents/orchestrator.py)
 
 ## Setup
 
-```bash
-# Copy env file
-cp .env.example .env
+### Mac (local)
 
-# Start everything
+Docker on Mac cannot access the GPU, so Ollama runs natively to get Metal acceleration. Only Qdrant and the app run in Docker.
+
+```bash
+# 1. Install and start Ollama natively
+brew install ollama
+ollama serve &
+
+# 2. Pull the required models
+ollama pull qwen3
+ollama pull qwen3:1.7b
+ollama pull nomic-embed-text
+
+# 3. Copy env file and start the stack
+cp .env.example .env
 docker-compose up --build
 ```
 
-On first run `ollama-init` pulls `qwen3` and `nomic-embed-text` before the app starts. Models are stored in the `ollama_data` Docker volume and are not re-downloaded on subsequent starts.
+The app connects to native Ollama via `host.docker.internal:11434`.
+
+### Linux / cloud server
+
+Ollama runs as a container alongside the app. Uncomment the `ollama` and `ollama-init` services in `docker-compose.yml` and set `OLLAMA_BASE_URL=http://ollama:11434` in the app's environment block. For GPU support, also uncomment the `deploy` block (requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)).
+
+```bash
+cp .env.example .env
+docker-compose up --build
+```
+
+On first run `ollama-init` pulls `qwen3`, `qwen3:1.7b`, and `nomic-embed-text` before the app starts. Models are stored in the `ollama_data` Docker volume and are not re-downloaded on subsequent starts.
+
+---
 
 Open [http://localhost:8000](http://localhost:8000) in your browser.
 
