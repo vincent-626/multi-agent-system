@@ -26,8 +26,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator
+import src.ollama_client as ollama
 
-from src.config import LONG_TERM_MEMORY_DB
+from src.config import LONG_TERM_MEMORY_DB, FAST_MODEL
 from src.schemas import FinalResponse
 
 logger = logging.getLogger(__name__)
@@ -107,8 +108,6 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
     Returns:
         List of fact strings that were saved (may be empty).
     """
-    import src.ollama_client as ollama
-    from src.config import FAST_MODEL
 
     prompt = (
         f"Conversation:\n"
