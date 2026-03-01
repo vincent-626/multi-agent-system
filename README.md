@@ -119,10 +119,43 @@ uv run python -m src.ingest docs/my_document.pdf
 
 The reference knowledge base is populated with Wikipedia articles on particle physics. The domain was chosen deliberately: technical terminology (quarks, leptons, bosons, hadronisation) stress-tests keyword discrimination in the sparse vectors; heavy cross-referencing between concepts (e.g. the Standard Model article referencing Higgs, QCD, and electroweak unification) produces natural multi-hop questions; and every factual claim is independently verifiable, making retrieval quality straightforward to evaluate.
 
-### Adding a dependency
+---
+
+## Evaluation
+
+The eval pipeline measures RAG quality using [RAGAS](https://docs.ragas.io/) with a local Ollama judge — no OpenAI key required.
+
+**Metrics (all reference-free):**
+- **Faithfulness** — is the answer grounded in the retrieved chunks?
+- **Response Relevancy** — does the answer actually address the question?
+- **Context Precision** — are the retrieved chunks relevant to the question?
+
+**Prerequisites:** Ollama and Qdrant must be running, and at least one document must be ingested.
 
 ```bash
-uv add <package>   # updates pyproject.toml and uv.lock
+# 1. Install eval dependencies
+uv sync --extra eval
+
+# 2. Disable thinking mode to prevent <think> blocks from breaking RAGAS output parsing
+export LLM_THINK=false
+
+# 3. Run the evaluation
+uv run python -m eval.run_eval
+```
+
+The runner executes each question in `eval/golden_dataset.json` through the full orchestrator, then scores the results with RAGAS. Raw answers and retrieved contexts are saved to `eval/results.json` after step 1, so if RAGAS scoring fails you can re-run scoring without re-querying the orchestrator.
+
+**Interpreting scores** (0–1 scale, higher is better):
+- `> 0.7` — good; retrieval and generation are well-aligned
+- `0.5–0.7` — acceptable; some gaps in grounding or relevance
+- `< 0.5` — investigate; likely retrieval misses or hallucination
+
+**Adding questions to the golden dataset:**
+
+Edit `eval/golden_dataset.json` and add entries with a `question` and `category` (`factual`, `multi_hop`, or `out_of_scope`):
+
+```json
+{"id": 99, "question": "Your question here", "category": "factual"}
 ```
 
 ---

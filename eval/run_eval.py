@@ -137,7 +137,7 @@ def _print_report(
 
     print("\nPER-CATEGORY AVERAGES")
     scores_df["_category"] = [categories[q] for q, _, _ in results]
-    for cat in ["factual", "multi_hop", "out_of_scope"]:
+    for cat in ["factual", "multi_hop", "out_of_scope", "calculator", "unit_converter", "arxiv_search"]:
         subset = scores_df[scores_df["_category"] == cat]
         if subset.empty:
             continue

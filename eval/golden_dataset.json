@@ -73,5 +73,50 @@
     "id": 15,
     "question": "What undergraduate GPA is required to apply for CERN's summer student programme?",
     "category": "out_of_scope"
+  },
+  {
+    "id": 16,
+    "question": "Calculate sqrt(m_p**2 + 938**2) where m_p is the proton mass in MeV/c².",
+    "category": "calculator"
+  },
+  {
+    "id": 17,
+    "question": "What is the value of hbarc?",
+    "category": "calculator"
+  },
+  {
+    "id": 18,
+    "question": "Compute 1/alpha where alpha is the fine-structure constant.",
+    "category": "calculator"
+  },
+  {
+    "id": 19,
+    "question": "Convert 7 TeV to joules.",
+    "category": "unit_converter"
+  },
+  {
+    "id": 20,
+    "question": "How many femtobarns is 1 picobarn?",
+    "category": "unit_converter"
+  },
+  {
+    "id": 21,
+    "question": "Convert the proton mass from MeV/c² to atomic mass units.",
+    "category": "unit_converter"
+  },
+  {
+    "id": 22,
+    "question": "What are recent papers on dark matter direct detection experiments?",
+    "category": "arxiv_search"
+  },
+  {
+    "id": 23,
+    "question": "Find recent research on neutrino oscillation and mass measurements.",
+    "category": "arxiv_search"
+  },
+  {
+    "id": 24,
+    "question": "What are the latest papers on Higgs boson production cross-sections at the LHC?",
+    "category": "arxiv_search"
   }
 ]
