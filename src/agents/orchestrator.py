@@ -228,7 +228,15 @@ class Orchestrator(BaseAgent):
 
             # ── 5d. Gap analysis with coverage context ────────────────────────
             attempted_queries = [e["question"] for e in evidence]
-            gap = await self._identify_gaps(question, evidence, attempted_queries, len(seen_chunks))
+            try:
+                gap = await self._identify_gaps(question, evidence, attempted_queries, len(seen_chunks))
+            except ValueError:
+                yield self._log_step(
+                    action="gap_analysis",
+                    input_text=question,
+                    output_text="Parse failed — proceeding to synthesis",
+                )
+                break
             yield self._log_step(
                 action="gap_analysis",
                 input_text=question,
@@ -350,10 +358,7 @@ class Orchestrator(BaseAgent):
             "If not, what specific gaps remain? Respond with JSON only."
         )
         raw = await asyncio.to_thread(ollama.chat, prompt, system=_GAP_SYSTEM, think=False, model=FAST_MODEL)
-        try:
-            return ollama.parse_json_response(raw, GapAnalysis)
-        except ValueError:
-            return GapAnalysis(is_sufficient=True, reasoning="Gap analysis parse failed — proceeding to synthesis.")
+        return ollama.parse_json_response(raw, GapAnalysis)
 
     async def _synthesise(
         self, question: str, memory_context: str, evidence: list[dict]
