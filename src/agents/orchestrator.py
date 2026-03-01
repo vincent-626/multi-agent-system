@@ -84,7 +84,9 @@ def _synth_system() -> str:
         "write a clear, well-structured final answer for the user.\n"
         "- Cite source files where relevant.\n"
         "- If evidence is conflicting, acknowledge it.\n"
-        "- Be concise but complete. Do not pad with filler."
+        "- Be concise but complete. Do not pad with filler.\n"
+        "- If the evidence does not contain information relevant to the question, say so clearly and honestly.\n"
+        "  Do not speculate, invent details, or draw on knowledge beyond what the evidence provides."
     )
 
 
