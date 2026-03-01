@@ -5,6 +5,7 @@ identifies gaps, and synthesises a final answer.
 
 import asyncio
 from collections.abc import AsyncGenerator
+from datetime import date
 
 import src.ollama_client as ollama
 import src.qdrant_client as qdrant
@@ -13,42 +14,45 @@ from src.config import COLLECTION_NAME, FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITER
 from src.memory.chat_history import save_message
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
-from src.schemas import AgentStep, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
+from src.schemas import AgentStep, ArxivQuery, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
 from src.sparse import compute_sparse
+from src.tools.arxiv_search import arxiv_search
 from src.tools.calculator import calculate
 from src.tools.unit_converter import convert as unit_convert
 from src.tools.web_search import web_search
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
-_DECOMPOSE_SYSTEM = """\
-You are a research planning agent. Your first job is to classify the input, then plan accordingly.
-
-Classification rules:
-- If the input is a greeting, chit-chat, a thank-you, or a meta question about the assistant
-  (e.g. "hi", "hello", "thanks", "what can you do?"), set is_conversational=true and leave
-  sub_questions and tool_call empty.
-- If the input requires any calculation — arithmetic, math functions (sqrt, log, sin…), or physics
-  constants (m_e, hbar, c, alpha…) — set tool_call to invoke the calculator.
-- If the input asks to convert a value between units (e.g. "convert 500 MeV to GeV",
-  "how many fb is 1 pb?", "what is 7 TeV in J?"), set tool_call to invoke the unit_converter.
-  Supported units: eV/keV/MeV/GeV/TeV/PeV, J, erg, b/mb/μb/nb/pb/fb/ab,
-  m/cm/mm/μm/nm/pm/fm, Å, ly, pc, eV/c²/MeV/c²/GeV/c², u/amu, kg, g,
-  MeV/c/GeV/c, s/ms/μs/ns/ps/fs, K.
-- Otherwise, break the question into 2–4 specific sub-questions that together fully answer it.
-  If the question is already atomic, return it as-is in a list of one.
-
-Respond ONLY with valid JSON (no markdown, no extra text):
-{
-  "is_conversational": false,
-  "sub_questions": ["...", "..."],
-  "tool_call": null
-}
-
-When a tool is needed, set tool_call like these examples:
-  calculator:     {"tool": "calculator", "args": {"expression": "sqrt(m_p**2 + 500**2)"}, "reasoning": "..."}
-  unit_converter: {"tool": "unit_converter", "args": {"value": 500, "from": "MeV", "to": "GeV"}, "reasoning": "..."}
-"""
+def _decompose_system() -> str:
+    return (
+        f"Today's date is {date.today().isoformat()}.\n"
+        "You are a research planning agent. Your first job is to classify the input, then plan accordingly.\n"
+        "\n"
+        "Classification rules:\n"
+        "- If the input is a greeting, chit-chat, a thank-you, or a meta question about the assistant\n"
+        "  (e.g. \"hi\", \"hello\", \"thanks\", \"what can you do?\"), set is_conversational=true and leave\n"
+        "  sub_questions and tool_call empty.\n"
+        "- If the input requires any calculation — arithmetic, math functions (sqrt, log, sin…), or physics\n"
+        "  constants (m_e, hbar, c, alpha…) — set tool_call to invoke the calculator.\n"
+        "- If the input asks to convert a value between units (e.g. \"convert 500 MeV to GeV\",\n"
+        "  \"how many fb is 1 pb?\", \"what is 7 TeV in J?\"), set tool_call to invoke the unit_converter.\n"
+        "  Supported units: eV/keV/MeV/GeV/TeV/PeV, J, erg, b/mb/μb/nb/pb/fb/ab,\n"
+        "  m/cm/mm/μm/nm/pm/fm, Å, ly, pc, eV/c²/MeV/c²/GeV/c², u/amu, kg, g,\n"
+        "  MeV/c/GeV/c, s/ms/μs/ns/ps/fs, K.\n"
+        "- Otherwise, break the question into 2–4 specific sub-questions that together fully answer it.\n"
+        "  If the question is already atomic, return it as-is in a list of one.\n"
+        "\n"
+        "Respond ONLY with valid JSON (no markdown, no extra text):\n"
+        "{\n"
+        "  \"is_conversational\": false,\n"
+        "  \"sub_questions\": [\"...\", \"...\"],\n"
+        "  \"tool_call\": null\n"
+        "}\n"
+        "\n"
+        "When a tool is needed, set tool_call like these examples:\n"
+        "  calculator:     {\"tool\": \"calculator\", \"args\": {\"expression\": \"sqrt(m_p**2 + 500**2)\"}, \"reasoning\": \"...\"}\n"
+        "  unit_converter: {\"tool\": \"unit_converter\", \"args\": {\"value\": 500, \"from\": \"MeV\", \"to\": \"GeV\"}, \"reasoning\": \"...\"}"
+    )
 
 _GAP_SYSTEM = """\
 You are a research quality agent. Given a question and all evidence gathered so far,
@@ -61,20 +65,27 @@ Rules:
 - Keep follow-up questions tightly scoped — do not repeat or rephrase queries already attempted.
 - Prefer follow_up_questions for document-based gaps.
 - Use web_search_queries only for time-sensitive or factual gaps not covered by documents.
+- Use arxiv_search_queries when the gap requires academic papers or recent research results
+  (e.g. "latest Higgs boson measurements", "papers on dark matter direct detection").
+  Each entry has a "query" string and an optional "sinceYear" integer for recency filtering.
 - Respond ONLY with valid JSON (no markdown, no extra text):
 {
   "is_sufficient": true | false,
   "reasoning": "why the evidence is or is not sufficient",
   "follow_up_questions": [],
-  "web_search_queries": []
+  "web_search_queries": [],
+  "arxiv_search_queries": [{"query": "...", "sinceYear": 2024}]
 }"""
 
-_SYNTH_SYSTEM = """\
-You are a synthesis agent. Given a research question and all gathered evidence,
-write a clear, well-structured final answer for the user.
-- Cite source files where relevant.
-- If evidence is conflicting, acknowledge it.
-- Be concise but complete. Do not pad with filler."""
+def _synth_system() -> str:
+    return (
+        f"Today's date is {date.today().isoformat()}.\n"
+        "You are a synthesis agent. Given a research question and all gathered evidence,\n"
+        "write a clear, well-structured final answer for the user.\n"
+        "- Cite source files where relevant.\n"
+        "- If evidence is conflicting, acknowledge it.\n"
+        "- Be concise but complete. Do not pad with filler."
+    )
 
 
 class Orchestrator(BaseAgent):
@@ -87,7 +98,7 @@ class Orchestrator(BaseAgent):
     def __init__(self, memory: ShortTermMemory) -> None:
         super().__init__(
             name="Orchestrator",
-            system_prompt=_DECOMPOSE_SYSTEM,
+            system_prompt=_decompose_system(),
             memory=memory,
         )
 
@@ -194,6 +205,7 @@ class Orchestrator(BaseAgent):
 
         pending_doc_queries = list(plan.sub_questions)
         pending_web_queries: list[str] = []
+        pending_arxiv_queries: list[ArxivQuery] = []
 
         for iteration in range(MAX_RESEARCH_ITERATIONS + 1):
             prev_seen_count = len(seen_chunks)
@@ -243,12 +255,24 @@ class Orchestrator(BaseAgent):
                     tool_used="web_search",
                 )
 
-            # ── 5c. Early stopping: retrieval exhausted ───────────────────────
+            # ── 5c. arXiv search for each pending arXiv query ─────────────────
+            for aq in pending_arxiv_queries:
+                context, urls = await self._arxiv_search(aq.query, aq.since_year)
+                all_web_sources.extend(urls)
+                evidence.append({"question": aq.query, "context": context, "sources": [], "web_sources": urls})
+                yield self._log_step(
+                    action="arxiv_search",
+                    input_text=aq.query,
+                    output_text=f"{len(urls)} paper(s) found" if urls else "No papers found",
+                    tool_used="arxiv_search",
+                )
+
+            # ── 5d. Early stopping: retrieval exhausted ───────────────────────
             if iteration >= MAX_RESEARCH_ITERATIONS:
                 break
 
             retrieval_exhausted = bool(pending_doc_queries) and len(seen_chunks) == prev_seen_count
-            if retrieval_exhausted and not pending_web_queries and iteration > 0:
+            if retrieval_exhausted and not pending_web_queries and not pending_arxiv_queries and iteration > 0:
                 yield self._log_step(
                     action="gap_analysis",
                     input_text=question,
@@ -256,7 +280,7 @@ class Orchestrator(BaseAgent):
                 )
                 break
 
-            # ── 5d. Gap analysis with coverage context ────────────────────────
+            # ── 5e. Gap analysis with coverage context ────────────────────────
             attempted_queries = [e["question"] for e in evidence]
             try:
                 gap = await self._identify_gaps(question, evidence, attempted_queries, len(seen_chunks))
@@ -278,8 +302,9 @@ class Orchestrator(BaseAgent):
 
             pending_doc_queries = gap.follow_up_questions
             pending_web_queries = gap.web_search_queries
+            pending_arxiv_queries = gap.arxiv_search_queries
 
-            if not pending_doc_queries and not pending_web_queries:
+            if not pending_doc_queries and not pending_web_queries and not pending_arxiv_queries:
                 break
 
         # ── 6. Synthesise ─────────────────────────────────────────────────────
@@ -312,7 +337,7 @@ class Orchestrator(BaseAgent):
         prompt = (
             f"{memory_context}\n\n" if memory_context else ""
         ) + f"Question: {question}\n\nDecompose this into sub-questions. Respond with JSON only."
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_DECOMPOSE_SYSTEM, think=False, model=LLM_MODEL)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_decompose_system(), think=False, model=LLM_MODEL)
         try:
             return ollama.parse_json_response(raw, ResearchPlan)
         except ValueError:
@@ -359,6 +384,30 @@ class Orchestrator(BaseAgent):
         urls = [r["url"] for r in result.results if r.get("url")]
         return ollama.strip_thinking(summary_raw), urls
 
+    async def _arxiv_search(self, query: str, since_year: int | None = None) -> tuple[str, list[str]]:
+        """Search arXiv for papers. Returns (formatted context, urls)."""
+        results = await asyncio.to_thread(arxiv_search, query, since_year=since_year)
+        if not results:
+            return "No papers found.", []
+
+        parts = []
+        for r in results:
+            authors = ", ".join(r["authors"][:3])
+            if len(r["authors"]) > 3:
+                authors += " et al."
+            abstract = r["abstract"][:400] + "..." if len(r["abstract"]) > 400 else r["abstract"]
+            parts.append(
+                f"Title: {r['title']}\n"
+                f"Authors: {authors}\n"
+                f"Published: {r['published']}\n"
+                f"Categories: {', '.join(r['categories'])}\n"
+                f"Abstract: {abstract}\n"
+                f"URL: {r['url']}"
+            )
+
+        urls = [r["url"] for r in results]
+        return "\n\n---\n\n".join(parts), urls
+
     async def _identify_gaps(
         self,
         question: str,
@@ -404,5 +453,5 @@ class Orchestrator(BaseAgent):
             f"All gathered evidence:\n{evidence_text}\n\n"
             "Write a clear, complete, well-structured answer based on the evidence above."
         )
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_SYNTH_SYSTEM, think=False, timeout=600)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_synth_system(), think=False, timeout=600)
         return ollama.strip_thinking(raw), ollama.extract_thinking(raw)

@@ -40,6 +40,15 @@ class ResearchPlan(BaseModel):
     tool_call: ToolCall | None = None  # set when a specific tool should be invoked directly
 
 
+class ArxivQuery(BaseModel):
+    """A single arXiv search query, optionally restricted to papers from a given year onwards."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    query: str
+    since_year: int | None = Field(alias="sinceYear", default=None)
+
+
 class GapAnalysis(BaseModel):
     """Gap analysis produced after reviewing all gathered evidence."""
 
@@ -49,6 +58,7 @@ class GapAnalysis(BaseModel):
     reasoning: str = ""
     follow_up_questions: list[str] = Field(alias="gaps", default=[])  # additional doc-retrieval questions
     web_search_queries: list[str] = Field(alias="webSearchQueries", default=[])   # questions needing live web data
+    arxiv_search_queries: list[ArxivQuery] = Field(alias="arxivSearchQueries", default=[])  # questions needing academic papers
 
 
 class OrchestratorDecision(BaseModel):
