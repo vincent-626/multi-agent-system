@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ToolCall(BaseModel):
     """Represents a tool invocation decision made by an agent."""
 
-    tool: Literal["rag_search", "calculator", "web_search", "final_answer"]
+    tool: Literal["rag_search", "calculator", "unit_converter", "web_search", "final_answer"]
     args: dict
     reasoning: str  # why the agent chose this tool
 
@@ -37,8 +37,7 @@ class ResearchPlan(BaseModel):
 
     is_conversational: bool = False  # greetings, chit-chat, meta questions
     sub_questions: list[str] = []
-    requires_calculator: bool = False
-    calculator_expression: str | None = None  # set when requires_calculator is True
+    tool_call: ToolCall | None = None  # set when a specific tool should be invoked directly
 
 
 class GapAnalysis(BaseModel):

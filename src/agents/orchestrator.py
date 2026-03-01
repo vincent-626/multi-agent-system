@@ -16,6 +16,7 @@ from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
 from src.sparse import compute_sparse
 from src.tools.calculator import calculate
+from src.tools.unit_converter import convert as unit_convert
 from src.tools.web_search import web_search
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -26,8 +27,13 @@ You are a research planning agent. Your first job is to classify the input, then
 Classification rules:
 - If the input is a greeting, chit-chat, a thank-you, or a meta question about the assistant
   (e.g. "hi", "hello", "thanks", "what can you do?"), set is_conversational=true and leave
-  sub_questions empty.
-- If the input is purely arithmetic, set requires_calculator=true and provide the expression.
+  sub_questions and tool_call empty.
+- If the input is purely arithmetic, set tool_call to invoke the calculator with the expression.
+- If the input asks to convert a value between units (e.g. "convert 500 MeV to GeV",
+  "how many fb is 1 pb?", "what is 7 TeV in J?"), set tool_call to invoke the unit_converter.
+  Supported units: eV/keV/MeV/GeV/TeV/PeV, J, erg, b/mb/μb/nb/pb/fb/ab,
+  m/cm/mm/μm/nm/pm/fm, Å, ly, pc, eV/c²/MeV/c²/GeV/c², u/amu, kg, g,
+  MeV/c/GeV/c, s/ms/μs/ns/ps/fs, K.
 - Otherwise, break the question into 2–4 specific sub-questions that together fully answer it.
   If the question is already atomic, return it as-is in a list of one.
 
@@ -35,9 +41,13 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 {
   "is_conversational": false,
   "sub_questions": ["...", "..."],
-  "requires_calculator": false,
-  "calculator_expression": null
-}"""
+  "tool_call": null
+}
+
+When a tool is needed, set tool_call like these examples:
+  calculator:     {"tool": "calculator", "args": {"expression": "2 * 3.14 * 6.4"}, "reasoning": "..."}
+  unit_converter: {"tool": "unit_converter", "args": {"value": 500, "from": "MeV", "to": "GeV"}, "reasoning": "..."}
+"""
 
 _GAP_SYSTEM = """\
 You are a research quality agent. Given a question and all evidence gathered so far,
@@ -131,27 +141,46 @@ class Orchestrator(BaseAgent):
             await asyncio.to_thread(save_message, user_id, question, response)
             return
 
-        # ── 4. Calculator fast-path ───────────────────────────────────────────
-        if plan.requires_calculator and plan.calculator_expression:
-            result = calculate(plan.calculator_expression)
-            yield self._log_step(
-                action="use_calculator",
-                input_text=plan.calculator_expression,
-                output_text=result,
-                tool_used="calculator",
-            )
-            answer, thinking = await self._synthesise(question, memory_context, [
-                {"question": plan.calculator_expression, "context": result, "sources": [], "web_sources": []}
-            ])
-            yield self._log_step(action="synthesise", input_text=question, output_text=answer, thinking=thinking)
-            response = FinalResponse(
-                answer=answer, steps=short_term.get_history(),
-                sources=[], web_sources=[], confidence="high", from_memory=False,
-            )
-            yield response
-            await asyncio.to_thread(save_message, user_id, question, response)
-            await asyncio.to_thread(extract_and_save, user_id, question, response)
-            return
+        # ── 4. Direct tool fast-path ──────────────────────────────────────────
+        if plan.tool_call:
+            tc = plan.tool_call
+            if tc.tool == "calculator":
+                expression = tc.args.get("expression", "")
+                result = calculate(expression)
+                yield self._log_step(
+                    action="use_calculator",
+                    input_text=expression,
+                    output_text=result,
+                    tool_used="calculator",
+                )
+                answer, thinking = await self._synthesise(question, memory_context, [
+                    {"question": expression, "context": result, "sources": [], "web_sources": []}
+                ])
+                yield self._log_step(action="synthesise", input_text=question, output_text=answer, thinking=thinking)
+                response = FinalResponse(
+                    answer=answer, steps=short_term.get_history(),
+                    sources=[], web_sources=[], confidence="high", from_memory=False,
+                )
+                yield response
+                await asyncio.to_thread(save_message, user_id, question, response)
+                await asyncio.to_thread(extract_and_save, user_id, question, response)
+                return
+            elif tc.tool == "unit_converter":
+                args = tc.args
+                result = unit_convert(args.get("value", 0), args.get("from", ""), args.get("to", ""))
+                yield self._log_step(
+                    action="unit_conversion",
+                    input_text=f"{args.get('value')} {args.get('from')} → {args.get('to')}",
+                    output_text=result,
+                    tool_used="unit_converter",
+                )
+                response = FinalResponse(
+                    answer=result, steps=short_term.get_history(),
+                    sources=[], web_sources=[], confidence="high", from_memory=False,
+                )
+                yield response
+                await asyncio.to_thread(save_message, user_id, question, response)
+                return
 
         # ── 5. Research loop ──────────────────────────────────────────────────
         evidence: list[dict] = []
