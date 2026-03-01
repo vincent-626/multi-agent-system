@@ -14,5 +14,9 @@ __pycache__/
 /memory/
 /docs/
 
+# Eval outputs
+/eval/results*.json
+/eval/scores*.json
+
 # macOS
 .DS_Store

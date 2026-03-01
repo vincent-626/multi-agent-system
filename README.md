@@ -130,14 +130,14 @@ The eval pipeline measures RAG quality using [RAGAS](https://docs.ragas.io/) wit
 - **Response Relevancy** — does the answer actually address the question?
 - **Context Precision** — are the retrieved chunks relevant to the question?
 
-**Prerequisites:** Ollama and Qdrant must be running, and at least one document must be ingested.
+**Prerequisites:** Ollama and Qdrant must be running, at least one document must be ingested, and an OpenAI API key must be set (`gpt-4o-mini` is used as the judge — costs a few cents per run).
 
 ```bash
 # 1. Install eval dependencies
 uv sync --extra eval
 
-# 2. Disable thinking mode to prevent <think> blocks from breaking RAGAS output parsing
-export LLM_THINK=false
+# 2. Set your OpenAI API key
+export OPENAI_API_KEY=sk-...
 
 # 3. Run the evaluation
 uv run python -m eval.run_eval

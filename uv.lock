@@ -1517,6 +1517,7 @@ dependencies = [
 [package.optional-dependencies]
 eval = [
     { name = "langchain-ollama" },
+    { name = "langchain-openai" },
     { name = "ragas" },
 ]
 
@@ -1528,6 +1529,7 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.115.6" },
     { name = "fastembed", specifier = ">=0.3.0" },
     { name = "langchain-ollama", marker = "extra == 'eval'", specifier = ">=0.2.0" },
+    { name = "langchain-openai", marker = "extra == 'eval'", specifier = ">=0.2.0" },
     { name = "pdfminer-six", specifier = ">=20260107" },
     { name = "pydantic", specifier = "==2.10.4" },
     { name = "python-multipart", specifier = "==0.0.20" },
