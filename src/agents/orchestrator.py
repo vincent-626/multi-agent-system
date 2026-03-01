@@ -136,7 +136,7 @@ class Orchestrator(BaseAgent):
         )
 
         # ── 3. Conversational fast-path ───────────────────────────────────────
-        if plan.is_conversational or (not plan.sub_questions and not plan.requires_calculator):
+        if plan.is_conversational or (not plan.sub_questions and not plan.tool_call):
             raw = await asyncio.to_thread(
                 ollama.chat,
                 question,
