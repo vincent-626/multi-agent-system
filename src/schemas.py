@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ToolCall(BaseModel):
@@ -44,10 +44,12 @@ class ResearchPlan(BaseModel):
 class GapAnalysis(BaseModel):
     """Gap analysis produced after reviewing all gathered evidence."""
 
-    is_sufficient: bool
-    reasoning: str
-    follow_up_questions: list[str] = []  # additional doc-retrieval questions
-    web_search_queries: list[str] = []   # questions needing live web data
+    model_config = ConfigDict(populate_by_name=True)
+
+    is_sufficient: bool = Field(alias="isSufficient", default=False)
+    reasoning: str = ""
+    follow_up_questions: list[str] = Field(alias="gaps", default=[])  # additional doc-retrieval questions
+    web_search_queries: list[str] = Field(alias="webSearchQueries", default=[])   # questions needing live web data
 
 
 class OrchestratorDecision(BaseModel):
