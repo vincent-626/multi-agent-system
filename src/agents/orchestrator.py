@@ -28,7 +28,8 @@ Classification rules:
 - If the input is a greeting, chit-chat, a thank-you, or a meta question about the assistant
   (e.g. "hi", "hello", "thanks", "what can you do?"), set is_conversational=true and leave
   sub_questions and tool_call empty.
-- If the input is purely arithmetic, set tool_call to invoke the calculator with the expression.
+- If the input requires any calculation — arithmetic, math functions (sqrt, log, sin…), or physics
+  constants (m_e, hbar, c, alpha…) — set tool_call to invoke the calculator.
 - If the input asks to convert a value between units (e.g. "convert 500 MeV to GeV",
   "how many fb is 1 pb?", "what is 7 TeV in J?"), set tool_call to invoke the unit_converter.
   Supported units: eV/keV/MeV/GeV/TeV/PeV, J, erg, b/mb/μb/nb/pb/fb/ab,
@@ -45,7 +46,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 }
 
 When a tool is needed, set tool_call like these examples:
-  calculator:     {"tool": "calculator", "args": {"expression": "2 * 3.14 * 6.4"}, "reasoning": "..."}
+  calculator:     {"tool": "calculator", "args": {"expression": "sqrt(m_p**2 + 500**2)"}, "reasoning": "..."}
   unit_converter: {"tool": "unit_converter", "args": {"value": 500, "from": "MeV", "to": "GeV"}, "reasoning": "..."}
 """
 
