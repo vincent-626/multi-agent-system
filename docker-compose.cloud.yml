@@ -1,0 +1,68 @@
+version: "3.9"
+
+# Cloud / Linux deployment (GPU via NVIDIA Container Toolkit).
+# Use this file on any Linux server with an NVIDIA GPU:
+#
+#   docker compose -f docker-compose.cloud.yml up --build -d
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull qwen3 && ollama pull qwen3:1.7b && ollama pull nomic-embed-text"]
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      qdrant:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - QDRANT_URL=http://qdrant:6333
+      - LLM_MODEL=qwen3
+      - FAST_MODEL=qwen3:1.7b
+    env_file:
+      - .env
+    volumes:
+      - ./docs:/app/docs
+      - ./memory:/app/memory
+
+volumes:
+  ollama_data:
+  qdrant_data:

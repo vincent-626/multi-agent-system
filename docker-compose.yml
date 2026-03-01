@@ -1,42 +1,11 @@
 version: "3.9"
 
-services:
-  # ── Ollama (cloud / Linux+GPU deployment) ────────────────────────────────────
-  # Commented out for local Mac development — run Ollama natively instead so
-  # it can use Metal GPU acceleration (Docker on Mac cannot access the GPU).
-  # Uncomment this entire block when deploying to a Linux server.
-  #
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama_data:/root/.ollama
-  #   healthcheck:
-  #     test: ["CMD", "ollama", "list"]
-  #     interval: 5s
-  #     timeout: 10s
-  #     retries: 20
-  #     start_period: 15s
-  #   # Uncomment to enable GPU support (requires NVIDIA Container Toolkit):
-  #   # deploy:
-  #   #   resources:
-  #   #     reservations:
-  #   #       devices:
-  #   #         - driver: nvidia
-  #   #           count: all
-  #   #           capabilities: [gpu]
-  #
-  # ollama-init:
-  #   image: ollama/ollama:latest
-  #   depends_on:
-  #     ollama:
-  #       condition: service_healthy
-  #   environment:
-  #     - OLLAMA_HOST=http://ollama:11434
-  #   entrypoint: ["/bin/sh", "-c", "ollama pull qwen3 && ollama pull qwen3:1.7b && ollama pull nomic-embed-text"]
-  #   restart: "no"
+# Local Mac development.
+# Ollama runs natively for Metal GPU acceleration — start it with:
+#   ollama serve
+# For cloud / Linux deployment use docker-compose.cloud.yml instead.
 
+services:
   qdrant:
     image: qdrant/qdrant:latest
     ports:
@@ -51,20 +20,16 @@ services:
     depends_on:
       qdrant:
         condition: service_started
-      # ollama-init:              # uncomment when using containerised Ollama
-      #   condition: service_completed_successfully
     environment:
-      # Local Mac: points to native Ollama on the host via host.docker.internal
-      # Cloud/Linux: change to http://ollama:11434 and uncomment ollama services above
-      # - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - QDRANT_URL=http://qdrant:6333
       - LLM_MODEL=qwen3
       - FAST_MODEL=qwen3:1.7b
-      - QDRANT_URL=http://qdrant:6333
+    env_file:
+      - .env
     volumes:
       - ./docs:/app/docs
       - ./memory:/app/memory
 
 volumes:
   qdrant_data:
-  ollama_data:

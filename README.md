@@ -68,14 +68,25 @@ The app connects to native Ollama via `host.docker.internal:11434`.
 
 ### Linux / cloud server
 
-Ollama runs as a container alongside the app. Uncomment the `ollama` and `ollama-init` services in `docker-compose.yml` and set `OLLAMA_BASE_URL=http://ollama:11434` in the app's environment block. For GPU support, also uncomment the `deploy` block (requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)).
+Use `docker-compose.cloud.yml`, which runs Ollama as a container with full GPU support via the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+
+**Automated setup:**
+
+1. Edit `startup.sh` and set `REPO_URL` to your fork.
+2. On the instance, run:
+
+```bash
+bash startup.sh
+```
+
+This installs dependencies, clones the repo, creates `.env`, and starts all services. On first run `ollama-init` pulls `qwen3`, `qwen3:1.7b`, and `nomic-embed-text` before the app starts. Models are stored in the `ollama_data` Docker volume and are not re-downloaded on subsequent starts.
+
+**Manual start:**
 
 ```bash
 cp .env.example .env
-docker-compose up --build
+docker compose -f docker-compose.cloud.yml up --build -d
 ```
-
-On first run `ollama-init` pulls `qwen3`, `qwen3:1.7b`, and `nomic-embed-text` before the app starts. Models are stored in the `ollama_data` Docker volume and are not re-downloaded on subsequent starts.
 
 ---
 
