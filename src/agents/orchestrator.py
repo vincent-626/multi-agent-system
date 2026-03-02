@@ -7,7 +7,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from datetime import date
 
-import src.ollama_client as ollama
+import src.clients.ollama_client as ollama
 from src.agents.base import BaseAgent
 from src.agents.research_worker import ResearchWorker
 from src.agents.synthesis_agent import SynthesisAgent

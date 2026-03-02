@@ -112,11 +112,11 @@ Use `docker-compose.cloud.yml`, which runs Ollama as a container with full GPU s
 
 **Automated setup:**
 
-1. Edit `startup.sh` and set `REPO_URL` to your fork.
+1. Edit `scripts/startup.sh` and set `REPO_URL` to your fork.
 2. Copy it to the instance and run:
 
 ```bash
-bash startup.sh
+bash scripts/startup.sh
 ```
 
 This installs dependencies, clones the repo, creates `.env`, and starts all services. On first run `ollama-init` pulls `qwen3`, `qwen3:1.7b`, and `nomic-embed-text` before the app starts. Models are stored in the `ollama_data` Docker volume and are not re-downloaded on subsequent starts.

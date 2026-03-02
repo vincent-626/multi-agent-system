@@ -6,7 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
 
 from src.config import QDRANT_URL
-from src.retry import qdrant_retry
+from src.clients.retry import qdrant_retry
 
 logger = logging.getLogger(__name__)
 

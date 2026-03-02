@@ -8,8 +8,8 @@ selection is an emergent decision from the LLM, not hardcoded routing logic.
 import asyncio
 import logging
 
-import src.ollama_client as ollama
-import src.qdrant_client as qdrant
+import src.clients.ollama_client as ollama
+import src.clients.qdrant_client as qdrant
 from src.agents.base import BaseAgent
 from src.config import (
     COLLECTION_NAME,
@@ -20,7 +20,7 @@ from src.config import (
 )
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, EvidenceBundle, WorkerToolCall
-from src.sparse import compute_sparse
+from src.tools.sparse import compute_sparse
 from src.tools.arxiv_search import arxiv_search
 from src.tools.calculator import calculate
 from src.tools.unit_converter import convert as unit_convert

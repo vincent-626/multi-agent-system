@@ -11,7 +11,7 @@ import requests
 from pydantic import BaseModel
 
 from src.config import EMBED_MODEL, LLM_MODEL, LLM_THINK, OLLAMA_BASE_URL
-from src.retry import http_retry
+from src.clients.retry import http_retry
 
 T = TypeVar("T", bound=BaseModel)
 logger = logging.getLogger(__name__)

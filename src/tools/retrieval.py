@@ -1,7 +1,7 @@
 """RAG retrieval tool — embeds a query and searches Qdrant."""
 
-import src.ollama_client as ollama
-import src.qdrant_client as qdrant
+import src.clients.ollama_client as ollama
+import src.clients.qdrant_client as qdrant
 from src.config import COLLECTION_NAME, TOP_K
 
 

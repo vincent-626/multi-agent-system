@@ -9,10 +9,10 @@ import sys
 from pathlib import Path
 from pdfminer.high_level import extract_text as _pdf_extract
 
-import src.ollama_client as ollama
-import src.qdrant_client as qdrant
+import src.clients.ollama_client as ollama
+import src.clients.qdrant_client as qdrant
 from src.config import CHUNK_OVERLAP, CHUNK_SIZE, COLLECTION_NAME
-from src.sparse import compute_sparse
+from src.tools.sparse import compute_sparse
 
 
 # ── Text extraction ───────────────────────────────────────────────────────────

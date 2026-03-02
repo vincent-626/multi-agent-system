@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-import src.ollama_client as ollama
+import src.clients.ollama_client as ollama
 from src.agents.base import BaseAgent
 from src.memory.short_term import ShortTermMemory
 from src.schemas import EvidenceBundle

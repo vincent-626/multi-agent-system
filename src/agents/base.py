@@ -2,7 +2,7 @@
 
 from abc import ABC
 
-import src.ollama_client as ollama
+import src.clients.ollama_client as ollama
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep
 

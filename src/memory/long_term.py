@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator
-import src.ollama_client as ollama
+import src.clients.ollama_client as ollama
 
 from src.config import LONG_TERM_MEMORY_DB, FAST_MODEL
 from src.schemas import FinalResponse
