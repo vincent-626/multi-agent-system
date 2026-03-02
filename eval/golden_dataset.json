@@ -110,19 +110,4 @@
     "category": "unit_converter",
     "expected_answer": "1.00728"
   },
-  {
-    "id": 22,
-    "question": "What are recent papers on dark matter direct detection experiments?",
-    "category": "arxiv_search"
-  },
-  {
-    "id": 23,
-    "question": "Find recent research on neutrino oscillation and mass measurements.",
-    "category": "arxiv_search"
-  },
-  {
-    "id": 24,
-    "question": "What are the latest papers on Higgs boson production cross-sections at the LHC?",
-    "category": "arxiv_search"
-  }
 ]

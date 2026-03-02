@@ -60,7 +60,7 @@ RESULTS_PATH = Path(__file__).parent / "results.json"
 SCORES_PATH = Path(__file__).parent / "scores.json"
 
 TOOL_CATEGORIES = {"calculator", "unit_converter"}
-RAG_CATEGORIES = {"factual", "multi_hop", "out_of_scope", "arxiv_search"}
+RAG_CATEGORIES = {"factual", "multi_hop", "out_of_scope"}
 
 
 # ── Orchestrator runner ───────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ def _print_report(
 
     print("\nRAGAS PER-CATEGORY AVERAGES")
     scores_df["_category"] = [categories[q] for q, _, _ in rag_results]
-    for cat in ["factual", "multi_hop", "out_of_scope", "arxiv_search"]:
+    for cat in ["factual", "multi_hop", "out_of_scope"]:
         subset = scores_df[scores_df["_category"] == cat]
         if subset.empty:
             continue
