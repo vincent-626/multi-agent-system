@@ -33,7 +33,7 @@ API_KEY: str = os.getenv("API_KEY", "")  # empty string = auth disabled
 
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 RATE_LIMIT_QUERY: str = os.getenv("RATE_LIMIT_QUERY", "10/minute")
-RATE_LIMIT_INGEST: str = os.getenv("RATE_LIMIT_INGEST", "5/minute")
+RATE_LIMIT_INGEST: str = os.getenv("RATE_LIMIT_INGEST", "60/minute")
 RATE_LIMIT_HISTORY: str = os.getenv("RATE_LIMIT_HISTORY", "30/minute")
 
 # ── Web search ────────────────────────────────────────────────────────────────
