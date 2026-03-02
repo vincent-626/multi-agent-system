@@ -203,7 +203,22 @@ The runner executes each question in `eval/golden_dataset.json` through the full
 - `0.5–0.7` — acceptable; some gaps in grounding or relevance
 - `< 0.5` — investigate; likely retrieval misses or hallucination
 
-Note: faithfulness and context precision are not meaningful for calculator and unit converter questions (no retrieved context is expected). Focus on the `factual`, `multi_hop`, and `arxiv_search` categories for RAG quality.
+Note: faithfulness and context precision are not meaningful for calculator and unit converter questions (no retrieved context is expected). Focus on the `factual` and `multi_hop` categories for RAG quality.
+
+**Benchmark results** (particle physics Wikipedia knowledge base, `qwen3` + `qwen3:1.7b`, judge: `gpt-4o-mini`):
+
+| Category | Faithfulness | Answer Relevancy | Context Precision |
+|---|---|---|---|
+| factual | 0.81 | 0.82 | 0.57 |
+| multi_hop | 0.86 | 0.74 | 0.93 |
+| out_of_scope | 0.44 | 0.00 | 0.65 |
+| **overall** | **0.75** | **0.64** | **0.68** |
+
+A few things worth noting about these numbers:
+
+- **`out_of_scope` answer relevancy is 0.0 by design.** These questions have no answer in the knowledge base (e.g. "what GPA is required for CERN's summer programme?"). The correct system behaviour is to say "I don't have this information" — which RAGAS scores as irrelevant because it's looking for a substantive answer. A system that scored well here would be hallucinating.
+- **`multi_hop` context precision (0.93) is the strongest signal.** These questions require connecting multiple concepts across documents (e.g. strong force → gluons → quark confinement), and the ResearchWorker consistently retrieves the right chunks across sub-questions.
+- **`factual` context precision (0.57) is the weakest.** A few specific factual questions (LHC circumference, CERN member states) retrieved chunks that didn't contain the answer — either the knowledge base lacks those specific facts, or the worker's query wasn't targeted enough. These are the clearest candidates for knowledge base expansion.
 
 **Adding questions to the golden dataset:**
 
@@ -213,7 +228,7 @@ Edit `eval/golden_dataset.json` and add entries with a `question` and `category`
 {"id": 99, "question": "Your question here", "category": "factual"}
 ```
 
-Supported categories: `factual`, `multi_hop`, `out_of_scope`, `calculator`, `unit_converter`, `arxiv_search`.
+Supported categories: `factual`, `multi_hop`, `out_of_scope`, `calculator`, `unit_converter`.
 
 ---
 
