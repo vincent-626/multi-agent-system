@@ -77,32 +77,38 @@
   {
     "id": 16,
     "question": "Calculate sqrt(m_p**2 + 938**2) where m_p is the proton mass in MeV/c².",
-    "category": "calculator"
+    "category": "calculator",
+    "expected_answer": "1326.72"
   },
   {
     "id": 17,
     "question": "Calculate hbarc.",
-    "category": "calculator"
+    "category": "calculator",
+    "expected_answer": "197.327"
   },
   {
     "id": 18,
     "question": "Compute 1/alpha where alpha is the fine-structure constant.",
-    "category": "calculator"
+    "category": "calculator",
+    "expected_answer": "137.036"
   },
   {
     "id": 19,
     "question": "Convert 7 TeV to joules.",
-    "category": "unit_converter"
+    "category": "unit_converter",
+    "expected_answer": "1.12152e-06"
   },
   {
     "id": 20,
     "question": "How many femtobarns is 1 picobarn?",
-    "category": "unit_converter"
+    "category": "unit_converter",
+    "expected_answer": "1000"
   },
   {
     "id": 21,
     "question": "Convert the proton mass from MeV/c² to atomic mass units.",
-    "category": "unit_converter"
+    "category": "unit_converter",
+    "expected_answer": "1.00728"
   },
   {
     "id": 22,

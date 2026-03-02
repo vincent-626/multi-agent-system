@@ -1,9 +1,15 @@
 """RAG evaluation runner using RAGAS with GPT-4o-mini as the judge.
 
-Metrics (all reference-free — no ground-truth answers required):
+RAGAS metrics (all reference-free — no ground-truth answers required):
   - Faithfulness:                  is the answer grounded in the retrieved chunks?
   - ResponseRelevancy:             does the answer actually address the question?
   - LLMContextPrecisionWithoutReference: are the retrieved chunks relevant to the question?
+
+Tool metrics (exact match against expected_answer in golden_dataset.json):
+  - correct: does the answer contain the expected numeric value?
+
+RAGAS is run only on RAG categories (factual, multi_hop, out_of_scope, arxiv_search).
+Tool categories (calculator, unit_converter) use exact match scoring instead.
 
 Usage:
     # Install eval dependencies first:
@@ -53,6 +59,9 @@ GOLDEN_PATH = Path(__file__).parent / "golden_dataset.json"
 RESULTS_PATH = Path(__file__).parent / "results.json"
 SCORES_PATH = Path(__file__).parent / "scores.json"
 
+TOOL_CATEGORIES = {"calculator", "unit_converter"}
+RAG_CATEGORIES = {"factual", "multi_hop", "out_of_scope", "arxiv_search"}
+
 
 # ── Orchestrator runner ───────────────────────────────────────────────────────
 
@@ -80,6 +89,28 @@ async def _collect_results(
         print(f"         {len(contexts)} chunk(s) retrieved | answer: {answer[:80].strip()}...")
         results.append((question, answer, contexts))
     return results
+
+
+# ── Tool exact-match scoring ──────────────────────────────────────────────────
+
+def _score_tools(
+    tool_results: list[tuple[str, str, list[str]]],
+    expected_answers: dict[str, str],
+    categories: dict[str, str],
+) -> list[dict]:
+    """Check whether each tool answer contains the expected numeric value."""
+    scored = []
+    for question, answer, _ in tool_results:
+        expected = expected_answers.get(question, "")
+        correct = expected.lower() in answer.lower() if expected else False
+        scored.append({
+            "question": question,
+            "category": categories[question],
+            "answer": answer,
+            "expected": expected,
+            "correct": correct,
+        })
+    return scored
 
 
 # ── RAGAS setup ───────────────────────────────────────────────────────────────
@@ -120,7 +151,8 @@ def _build_dataset(
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 def _print_report(
-    results: list[tuple[str, str, list[str]]],
+    rag_results: list[tuple[str, str, list[str]]],
+    tool_scored: list[dict],
     categories: dict[str, str],
     scores_df,
 ) -> None:
@@ -130,7 +162,7 @@ def _print_report(
     print("RAGAS EVALUATION RESULTS")
     print("=" * 70)
 
-    for i, (question, _, contexts) in enumerate(results):
+    for i, (question, _, contexts) in enumerate(rag_results):
         row = scores_df.iloc[i]
         cat = categories[question]
         print(f"\n[{cat}] {question}")
@@ -140,14 +172,14 @@ def _print_report(
             print(f"  {col:<35} {val:.3f}" if val is not None else f"  {col:<35} N/A")
 
     print("\n" + "─" * 70)
-    print("OVERALL AVERAGES")
+    print("RAGAS OVERALL AVERAGES")
     for col in metric_cols:
         if col in scores_df.columns:
             print(f"  {col:<35} {scores_df[col].mean():.3f}")
 
-    print("\nPER-CATEGORY AVERAGES")
-    scores_df["_category"] = [categories[q] for q, _, _ in results]
-    for cat in ["factual", "multi_hop", "out_of_scope", "calculator", "unit_converter", "arxiv_search"]:
+    print("\nRAGAS PER-CATEGORY AVERAGES")
+    scores_df["_category"] = [categories[q] for q, _, _ in rag_results]
+    for cat in ["factual", "multi_hop", "out_of_scope", "arxiv_search"]:
         subset = scores_df[scores_df["_category"] == cat]
         if subset.empty:
             continue
@@ -156,20 +188,43 @@ def _print_report(
             if col in subset.columns:
                 print(f"    {col:<33} {subset[col].mean():.3f}")
 
+    if tool_scored:
+        print("\n" + "=" * 70)
+        print("TOOL EXACT-MATCH RESULTS")
+        print("=" * 70)
+        for entry in tool_scored:
+            status = "PASS" if entry["correct"] else "FAIL"
+            print(f"\n[{entry['category']}] {entry['question']}")
+            print(f"  expected : {entry['expected']}")
+            print(f"  answer   : {entry['answer'][:120].strip()}")
+            print(f"  result   : {status}")
+
+        by_cat: dict[str, list[bool]] = {}
+        for entry in tool_scored:
+            by_cat.setdefault(entry["category"], []).append(entry["correct"])
+
+        print("\n" + "─" * 70)
+        print("TOOL ACCURACY")
+        total = [e["correct"] for e in tool_scored]
+        print(f"  overall : {sum(total)}/{len(total)} ({100*sum(total)/len(total):.0f}%)")
+        for cat, results in by_cat.items():
+            print(f"  {cat:<20} {sum(results)}/{len(results)} ({100*sum(results)/len(results):.0f}%)")
+
 
 def _save_scores(
-    results: list[tuple[str, str, list[str]]],
+    rag_results: list[tuple[str, str, list[str]]],
+    tool_scored: list[dict],
     categories: dict[str, str],
     scores_df,
 ) -> None:
     from datetime import datetime
     metric_cols = [c for c in scores_df.columns if c not in ("user_input", "response", "retrieved_contexts", "_category")]
-    scores_df["_category"] = [categories[q] for q, _, _ in results]
+    scores_df["_category"] = [categories[q] for q, _, _ in rag_results]
 
-    per_question = []
-    for i, (question, answer, contexts) in enumerate(results):
+    rag_per_question = []
+    for i, (question, answer, contexts) in enumerate(rag_results):
         row = scores_df.iloc[i]
-        per_question.append({
+        rag_per_question.append({
             "question": question,
             "category": categories[question],
             "answer": answer,
@@ -177,19 +232,39 @@ def _save_scores(
             "scores": {col: round(float(row[col]), 4) if row.get(col) is not None else None for col in metric_cols},
         })
 
-    overall = {col: round(float(scores_df[col].mean()), 4) for col in metric_cols if col in scores_df.columns}
+    rag_overall = {col: round(float(scores_df[col].mean()), 4) for col in metric_cols if col in scores_df.columns}
 
-    by_category = {}
+    rag_by_category = {}
     for cat in scores_df["_category"].unique():
         subset = scores_df[scores_df["_category"] == cat]
-        by_category[cat] = {col: round(float(subset[col].mean()), 4) for col in metric_cols if col in subset.columns}
+        rag_by_category[cat] = {col: round(float(subset[col].mean()), 4) for col in metric_cols if col in subset.columns}
+
+    tool_by_category: dict[str, dict] = {}
+    for entry in tool_scored:
+        cat = entry["category"]
+        tool_by_category.setdefault(cat, {"correct": 0, "total": 0})
+        tool_by_category[cat]["total"] += 1
+        if entry["correct"]:
+            tool_by_category[cat]["correct"] += 1
+    for cat, counts in tool_by_category.items():
+        counts["accuracy"] = round(counts["correct"] / counts["total"], 4)
+
+    total_correct = sum(e["correct"] for e in tool_scored)
+    total_tool = len(tool_scored)
 
     output = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "judge_model": JUDGE_MODEL,
-        "overall": overall,
-        "by_category": by_category,
-        "per_question": per_question,
+        "ragas": {
+            "overall": rag_overall,
+            "by_category": rag_by_category,
+            "per_question": rag_per_question,
+        },
+        "tools": {
+            "overall_accuracy": round(total_correct / total_tool, 4) if total_tool else None,
+            "by_category": tool_by_category,
+            "per_question": tool_scored,
+        },
     }
     SCORES_PATH.write_text(json.dumps(output, indent=2))
     print(f"\nScores saved to {SCORES_PATH.name}")
@@ -209,6 +284,7 @@ def main() -> None:
 
     golden = json.loads(GOLDEN_PATH.read_text())
     categories = {entry["question"]: entry["category"] for entry in golden}
+    expected_answers = {entry["question"]: entry.get("expected_answer", "") for entry in golden}
 
     print(f"Judge model : {JUDGE_MODEL}")
     print(f"Embed model : {EMBED_MODEL}")
@@ -224,7 +300,6 @@ def main() -> None:
         questions = [entry["question"] for entry in golden]
         print(f"Loaded {len(questions)} questions from {GOLDEN_PATH.name}\n")
 
-        # Step 1: collect answers + contexts from the orchestrator
         print("── Step 1/2: running orchestrator ──────────────────────────────────")
         results = asyncio.run(_collect_results(questions))
 
@@ -236,15 +311,25 @@ def main() -> None:
         )
         print(f"\nRaw results saved to {RESULTS_PATH.name}")
 
-    # Step 2: score with RAGAS
-    print("\n── Step 2/2: scoring with RAGAS ─────────────────────────────────────")
+    # Split by category
+    rag_results = [(q, a, c) for q, a, c in results if categories[q] in RAG_CATEGORIES]
+    tool_results = [(q, a, c) for q, a, c in results if categories[q] in TOOL_CATEGORIES]
+
+    # Step 2a: score RAG questions with RAGAS
+    print(f"\n── Step 2/2: scoring ────────────────────────────────────────────────")
+    print(f"  RAGAS : {len(rag_results)} questions")
+    print(f"  Tools : {len(tool_results)} questions\n")
+
     _, _, metrics = _build_ragas_components()
-    dataset = _build_dataset(results)
+    dataset = _build_dataset(rag_results)
     scores = evaluate(dataset=dataset, metrics=metrics)
     scores_df = scores.to_pandas()  # type: ignore[union-attr]
 
-    _print_report(results, categories, scores_df)
-    _save_scores(results, categories, scores_df)
+    # Step 2b: score tool questions with exact match
+    tool_scored = _score_tools(tool_results, expected_answers, categories)
+
+    _print_report(rag_results, tool_scored, categories, scores_df)
+    _save_scores(rag_results, tool_scored, categories, scores_df)
 
 
 if __name__ == "__main__":
