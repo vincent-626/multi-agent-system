@@ -264,12 +264,19 @@
     .badge.history-ts  { color: var(--text-dim); font-weight: 400; font-style: italic; }
 
     /* ── Input bar ───────────────────────────────────────────────── */
-    .input-bar {
+    .input-wrapper {
+      flex-shrink: 0;
       background: var(--bg);
-      padding: 16px 0 20px;
+      border-top: 1px solid var(--border);
+      padding: 0 20px;
+    }
+
+    .input-bar {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 14px 0 18px;
       display: flex;
       gap: 10px;
-      flex-shrink: 0;
       align-items: center;
     }
 
@@ -320,26 +327,28 @@
   </div>
 </header>
 
-<main>
+<main id="scroll-area">
   <div class="main-inner">
     <div id="response-area"></div>
-
-    <div class="input-bar">
-      <input
-        type="text"
-        id="question-input"
-        placeholder="Ask about particle physics…"
-        autocomplete="off"
-      />
-      <button id="submit-btn" onclick="submitQuery()" title="Send">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="19" x2="12" y2="5"/>
-          <polyline points="5 12 12 5 19 12"/>
-        </svg>
-      </button>
-    </div>
   </div>
 </main>
+
+<div class="input-wrapper">
+  <div class="input-bar">
+    <input
+      type="text"
+      id="question-input"
+      placeholder="Ask about particle physics…"
+      autocomplete="off"
+    />
+    <button id="submit-btn" onclick="submitQuery()" title="Send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="19" x2="12" y2="5"/>
+        <polyline points="5 12 12 5 19 12"/>
+      </svg>
+    </button>
+  </div>
+</div>
 
 <script>
 // ── User identity ─────────────────────────────────────────────────────────────
@@ -368,6 +377,7 @@ setInterval(checkHealth, 15000);
 
 // ── Chat thread ───────────────────────────────────────────────────────────────
 const thread = document.getElementById('response-area');
+const scrollArea = document.getElementById('scroll-area');
 
 async function loadHistory() {
   try {
@@ -586,7 +596,7 @@ function setLoading(on) {
 }
 
 function scrollToBottom() {
-  thread.scrollTop = thread.scrollHeight;
+  scrollArea.scrollTop = scrollArea.scrollHeight;
 }
 
 function badge(text, cls) {
