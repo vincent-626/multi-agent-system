@@ -132,7 +132,6 @@ class ResearchWorker(BaseAgent):
                 action=tool_call.tool,
                 input_text=question,
                 output_text=tool_call.reasoning,
-                tool_used=tool_call.tool,
             ))
 
             if tool_call.tool == "done":
