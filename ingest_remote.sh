@@ -40,7 +40,7 @@ for f in "${FILES[@]}"; do
         BODY=$(echo "$RESPONSE" | head -1)
         [ "$HTTP_CODE" = "200" ] && break
         if [ $attempt -lt $MAX_RETRIES ]; then
-            DELAY=$(( RETRY_BASE_DELAY * (1 << (attempt - 1)) )
+            DELAY=$(( RETRY_BASE_DELAY * (1 << (attempt - 1)) ))
             echo "retry $attempt/$((MAX_RETRIES - 1)) (HTTP $HTTP_CODE) — waiting ${DELAY}s ..."
             printf "Ingesting %-50s ... " "$NAME"
             sleep $DELAY
