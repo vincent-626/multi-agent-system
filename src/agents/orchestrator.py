@@ -1,5 +1,5 @@
 """
-Research orchestrator — decomposes questions, retrieves evidence iteratively,
+Research orchestrator — decomposes questions, dispatches parallel ResearchWorkers,
 identifies gaps, and synthesises a final answer.
 """
 
@@ -8,18 +8,16 @@ from collections.abc import AsyncGenerator
 from datetime import date
 
 import src.ollama_client as ollama
-import src.qdrant_client as qdrant
 from src.agents.base import BaseAgent
-from src.config import COLLECTION_NAME, FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITERATIONS, RAG_SCORE_THRESHOLD, TOP_K
+from src.agents.research_worker import ResearchWorker
+from src.agents.synthesis_agent import SynthesisAgent
+from src.config import FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITERATIONS
 from src.memory.chat_history import save_message
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
-from src.schemas import AgentStep, ArxivQuery, FinalResponse, GapAnalysis, ResearchPlan, WebSearchResult
-from src.sparse import compute_sparse
-from src.tools.arxiv_search import arxiv_search
+from src.schemas import AgentStep, EvidenceBundle, FinalResponse, GapAnalysis, ResearchPlan
 from src.tools.calculator import calculate
 from src.tools.unit_converter import convert as unit_convert
-from src.tools.web_search import web_search
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
@@ -58,40 +56,26 @@ _GAP_SYSTEM = """\
 You are a research quality agent. Given a question and all evidence gathered so far,
 decide whether the evidence is sufficient to write a complete answer.
 
-If gaps exist, output specific follow-up questions — either for document retrieval or for a live web search.
+If gaps exist, output specific follow-up questions for workers to investigate.
+Workers will decide on their own which sources (documents, web, arXiv) to use.
 
 Rules:
 - Be honest: if the evidence is sufficient, say so.
-- Keep follow-up questions tightly scoped — do not repeat or rephrase queries already attempted.
-- Prefer follow_up_questions for document-based gaps.
-- Use web_search_queries only for time-sensitive or factual gaps not covered by documents.
-- Use arxiv_search_queries when the gap requires academic papers or recent research results
-  (e.g. "latest Higgs boson measurements", "papers on dark matter direct detection").
-  Each entry has a "query" string and an optional "sinceYear" integer for recency filtering.
+- Keep follow-up questions tightly scoped — do not repeat or rephrase questions already attempted.
 - Respond ONLY with valid JSON (no markdown, no extra text):
 {
-  "is_sufficient": true | false,
+  "isSufficient": true | false,
   "reasoning": "why the evidence is or is not sufficient",
-  "follow_up_questions": [],
-  "web_search_queries": [],
-  "arxiv_search_queries": [{"query": "...", "sinceYear": 2024}]
+  "gaps": []
 }"""
-
-def _synth_system() -> str:
-    return (
-        f"Today's date is {date.today().isoformat()}.\n"
-        "You are a synthesis agent. Given a research question and all gathered evidence,\n"
-        "write a clear, well-structured final answer for the user.\n"
-        "- Cite source files where relevant.\n"
-        "- If evidence is conflicting, acknowledge it.\n"
-        "- Be concise but complete. Do not pad with filler.\n"
-        "- If the evidence does not contain information relevant to the question, say so clearly and honestly.\n"
-        "  Do not speculate, invent details, or draw on knowledge beyond what the evidence provides."
-    )
 
 
 class Orchestrator(BaseAgent):
-    """Research orchestrator that decomposes questions and iteratively gathers evidence.
+    """Slim coordinator that decomposes questions and dispatches parallel ResearchWorkers.
+
+    Uses :class:`~src.agents.research_worker.ResearchWorker` agents (one per
+    sub-question, all in parallel) and
+    :class:`~src.agents.synthesis_agent.SynthesisAgent` for the final answer.
 
     Args:
         memory: Shared short-term memory for the current session.
@@ -103,6 +87,7 @@ class Orchestrator(BaseAgent):
             system_prompt=_decompose_system(),
             memory=memory,
         )
+        self._synth = SynthesisAgent(memory=memory)
 
     async def run(
         self,
@@ -167,9 +152,11 @@ class Orchestrator(BaseAgent):
                     output_text=result,
                     tool_used="calculator",
                 )
-                answer, thinking = await self._synthesise(question, memory_context, [
-                    {"question": expression, "context": result, "sources": [], "web_sources": []}
-                ])
+                answer, thinking = await self._synth.run(
+                    question,
+                    [EvidenceBundle(question=expression, context=result)],
+                    memory_context,
+                )
                 yield self._log_step(action="synthesise", input_text=question, output_text=answer, thinking=thinking)
                 response = FinalResponse(
                     answer=answer, steps=short_term.get_history(),
@@ -197,95 +184,50 @@ class Orchestrator(BaseAgent):
                 return
 
         # ── 5. Research loop ──────────────────────────────────────────────────
-        evidence: list[dict] = []
+        evidence: list[EvidenceBundle] = []
         all_sources: list[str] = []
         all_web_sources: list[str] = []
         all_context_texts: list[str] = []
 
-        # Track seen chunks by (source_file, chunk_index) to avoid redundancy
         seen_chunks: set[tuple[str, int]] = set()
-
-        pending_doc_queries = list(plan.sub_questions)
-        pending_web_queries: list[str] = []
-        pending_arxiv_queries: list[ArxivQuery] = []
+        pending_questions = list(plan.sub_questions)
 
         for iteration in range(MAX_RESEARCH_ITERATIONS + 1):
             prev_seen_count = len(seen_chunks)
 
-            # ── 5a. Retrieve for each pending doc query ───────────────────────
-            for sq in pending_doc_queries:
-                hits = await self._retrieve(sq)
+            # ── 5a. Dispatch one ResearchWorker per question, all in parallel ──
+            results = list(await asyncio.gather(
+                *(ResearchWorker(memory=self.memory).run(q, seen_chunks)
+                  for q in pending_questions)
+            ))
 
-                # Deduplicate: keep only chunks not seen in previous retrievals
-                new_hits = [
-                    h for h in hits
-                    if (h["source_file"], h["chunk_index"]) not in seen_chunks
-                ]
-                for h in new_hits:
-                    seen_chunks.add((h["source_file"], h["chunk_index"]))
+            # ── 5b. Collect evidence and yield per-worker ReAct steps ─────────
+            for bundle, worker_steps in results:
+                # Yield each ReAct step so the trace shows tool-by-tool reasoning
+                for step in worker_steps:
+                    yield step
+                evidence.append(bundle)
+                all_sources.extend(bundle.sources)
+                all_web_sources.extend(bundle.web_sources)
+                all_context_texts.extend(bundle.raw_texts)
 
-                ctx = self._format_hits(new_hits)
-                srcs = list(dict.fromkeys(h["source_file"] for h in new_hits))
-                all_sources.extend(srcs)
-                all_context_texts.extend(h["text"] for h in new_hits)
-                evidence.append({"question": sq, "context": ctx, "sources": srcs, "web_sources": []})
-
-                skipped = len(hits) - len(new_hits)
-                if not hits:
-                    status = "No relevant chunks found"
-                elif skipped:
-                    status = f"{len(new_hits)} new chunks, {skipped} duplicate(s) skipped"
-                else:
-                    status = f"{len(new_hits)} new chunks"
-
-                yield self._log_step(
-                    action="retrieve",
-                    input_text=sq,
-                    output_text=status,
-                    tool_used="rag_search",
-                )
-
-            # ── 5b. Web search for each pending web query ─────────────────────
-            for wq in pending_web_queries:
-                summary, urls = await self._web_search(wq)
-                all_web_sources.extend(urls)
-                evidence.append({"question": wq, "context": summary, "sources": [], "web_sources": urls})
-                yield self._log_step(
-                    action="web_search",
-                    input_text=wq,
-                    output_text=summary or "No results",
-                    tool_used="web_search",
-                )
-
-            # ── 5c. arXiv search for each pending arXiv query ─────────────────
-            for aq in pending_arxiv_queries:
-                context, urls = await self._arxiv_search(aq.query, aq.since_year)
-                all_web_sources.extend(urls)
-                evidence.append({"question": aq.query, "context": context, "sources": [], "web_sources": urls})
-                yield self._log_step(
-                    action="arxiv_search",
-                    input_text=aq.query,
-                    output_text=f"{len(urls)} paper(s) found" if urls else "No papers found",
-                    tool_used="arxiv_search",
-                )
-
-            # ── 5d. Early stopping: retrieval exhausted ───────────────────────
+            # ── 5c. Early stopping: iteration cap ─────────────────────────────
             if iteration >= MAX_RESEARCH_ITERATIONS:
                 break
 
-            retrieval_exhausted = bool(pending_doc_queries) and len(seen_chunks) == prev_seen_count
-            if retrieval_exhausted and not pending_web_queries and not pending_arxiv_queries and iteration > 0:
+            # ── 5d. Early stopping: retrieval exhausted ───────────────────────
+            if len(seen_chunks) == prev_seen_count and iteration > 0:
                 yield self._log_step(
                     action="gap_analysis",
                     input_text=question,
-                    output_text="Retrieval exhausted — no new chunks found, proceeding to synthesis",
+                    output_text="Retrieval exhausted — no new evidence found, proceeding to synthesis",
                 )
                 break
 
-            # ── 5e. Gap analysis with coverage context ────────────────────────
-            attempted_queries = [e["question"] for e in evidence]
+            # ── 5e. Gap analysis ──────────────────────────────────────────────
+            attempted = [e.question for e in evidence]
             try:
-                gap = await self._identify_gaps(question, evidence, attempted_queries, len(seen_chunks))
+                gap = await self._identify_gaps(question, evidence, attempted, len(seen_chunks))
             except ValueError:
                 yield self._log_step(
                     action="gap_analysis",
@@ -299,18 +241,13 @@ class Orchestrator(BaseAgent):
                 output_text=f"sufficient={gap.is_sufficient} | {gap.reasoning}",
             )
 
-            if gap.is_sufficient:
+            if gap.is_sufficient or not gap.follow_up_questions:
                 break
 
-            pending_doc_queries = gap.follow_up_questions
-            pending_web_queries = gap.web_search_queries
-            pending_arxiv_queries = gap.arxiv_search_queries
-
-            if not pending_doc_queries and not pending_web_queries and not pending_arxiv_queries:
-                break
+            pending_questions = gap.follow_up_questions
 
         # ── 6. Synthesise ─────────────────────────────────────────────────────
-        answer, thinking = await self._synthesise(question, memory_context, evidence)
+        answer, thinking = await self._synth.run(question, evidence, memory_context)
         yield self._log_step(
             action="synthesise",
             input_text=question,
@@ -324,7 +261,7 @@ class Orchestrator(BaseAgent):
             steps=short_term.get_history(),
             sources=list(dict.fromkeys(all_sources)),
             web_sources=list(dict.fromkeys(all_web_sources)),
-            confidence="high" if any(e["sources"] or e["web_sources"] for e in evidence) else "medium",
+            confidence="high" if any(e.sources or e.web_sources for e in evidence) else "medium",
             from_memory=False,
             contexts=all_context_texts,
         )
@@ -345,91 +282,22 @@ class Orchestrator(BaseAgent):
         except ValueError:
             return ResearchPlan(sub_questions=[question])
 
-    async def _retrieve(self, query: str) -> list[dict]:
-        """Embed *query* and search Qdrant using hybrid dense + sparse RRF."""
-        try:
-            query_vector = await asyncio.to_thread(ollama.embed, query)
-            sparse_indices, sparse_values = await asyncio.to_thread(compute_sparse, query)
-            return await asyncio.to_thread(
-                qdrant.search,
-                COLLECTION_NAME, query_vector,
-                sparse_indices=sparse_indices,
-                sparse_values=sparse_values,
-                top_k=TOP_K,
-                score_threshold=RAG_SCORE_THRESHOLD,
-            )
-        except Exception:
-            return []
-
-    def _format_hits(self, hits: list[dict]) -> str:
-        """Format a list of Qdrant hits into a readable context string."""
-        parts = [
-            f"[{i}] (source: {h['source_file']}, score: {h['score']:.3f})\n{h['text']}"
-            for i, h in enumerate(hits, start=1)
-        ]
-        return "\n\n".join(parts)
-
-    async def _web_search(self, query: str) -> tuple[str, list[str]]:
-        """Run a web search and summarise results. Returns (summary, urls)."""
-        result = await asyncio.to_thread(web_search, query)
-        if not result.results:
-            return "No results found.", []
-
-        snippets = "\n".join(f"- {r['title']}: {r['snippet']}" for r in result.results)
-        summary_raw = await asyncio.to_thread(
-            ollama.chat,
-            f"Summarise these search results for: {query}\n\n{snippets}\n\nGive a concise, factual summary.",
-            system="You are a helpful assistant that summarises web search results.",
-            think=False,
-            model=FAST_MODEL,
-        )
-        urls = [r["url"] for r in result.results if r.get("url")]
-        return ollama.strip_thinking(summary_raw), urls
-
-    async def _arxiv_search(self, query: str, since_year: int | None = None) -> tuple[str, list[str]]:
-        """Search arXiv for papers. Returns (formatted context, urls)."""
-        results = await asyncio.to_thread(arxiv_search, query, since_year=since_year)
-        if not results:
-            return "No papers found.", []
-
-        parts = []
-        for r in results:
-            authors = ", ".join(r["authors"][:3])
-            if len(r["authors"]) > 3:
-                authors += " et al."
-            abstract = r["abstract"][:400] + "..." if len(r["abstract"]) > 400 else r["abstract"]
-            parts.append(
-                f"Title: {r['title']}\n"
-                f"Authors: {authors}\n"
-                f"Published: {r['published']}\n"
-                f"Categories: {', '.join(r['categories'])}\n"
-                f"Abstract: {abstract}\n"
-                f"URL: {r['url']}"
-            )
-
-        urls = [r["url"] for r in results]
-        return "\n\n---\n\n".join(parts), urls
-
     async def _identify_gaps(
         self,
         question: str,
-        evidence: list[dict],
+        evidence: list[EvidenceBundle],
         attempted_queries: list[str],
         unique_chunk_count: int,
     ) -> GapAnalysis:
-        """Ask the LLM whether the gathered evidence is sufficient.
-
-        Passes a coverage summary so the model avoids generating follow-up
-        questions that overlap with what has already been retrieved.
-        """
+        """Ask the LLM whether the gathered evidence is sufficient."""
         evidence_text = "\n\n---\n\n".join(
-            f"Sub-question: {e['question']}\nEvidence:\n{e['context'] or 'No relevant information found.'}"
+            f"Sub-question: {e.question}\nEvidence:\n{e.context or 'No relevant information found.'}"
             for e in evidence
         )
         coverage = (
             f"Retrieval summary: {unique_chunk_count} unique document chunks retrieved so far.\n"
-            f"Queries already attempted: {attempted_queries}\n"
-            "Do not generate follow-up questions that overlap with or rephrase the above queries."
+            f"Questions already attempted: {attempted_queries}\n"
+            "Do not generate follow-up questions that overlap with or rephrase the above questions."
         )
         prompt = (
             f"Original question: {question}\n\n"
@@ -440,20 +308,3 @@ class Orchestrator(BaseAgent):
         )
         raw = await asyncio.to_thread(ollama.chat, prompt, system=_GAP_SYSTEM, think=False, model=FAST_MODEL)
         return ollama.parse_json_response(raw, GapAnalysis)
-
-    async def _synthesise(
-        self, question: str, memory_context: str, evidence: list[dict]
-    ) -> tuple[str, str]:
-        """Synthesise a final answer from all gathered evidence."""
-        evidence_text = "\n\n---\n\n".join(
-            f"Sub-question: {e['question']}\nEvidence:\n{e['context'] or 'No relevant information found.'}"
-            for e in evidence
-        )
-        prompt = (
-            (f"{memory_context}\n\n" if memory_context else "")
-            + f"Research question: {question}\n\n"
-            f"All gathered evidence:\n{evidence_text}\n\n"
-            "Write a clear, complete, well-structured answer based on the evidence above."
-        )
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_synth_system(), think=False, timeout=600)
-        return ollama.strip_thinking(raw), ollama.extract_thinking(raw)

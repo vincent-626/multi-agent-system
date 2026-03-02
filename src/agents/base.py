@@ -1,6 +1,6 @@
 """BaseAgent — abstract foundation for all agents in the system."""
 
-from abc import ABC, abstractmethod
+from abc import ABC
 
 import src.ollama_client as ollama
 from src.memory.short_term import ShortTermMemory
@@ -28,14 +28,6 @@ class BaseAgent(ABC):
         self.name = name
         self.system_prompt = system_prompt
         self.memory = memory
-
-    @abstractmethod
-    def run(self, task: str) -> object:
-        """Execute the agent's primary task and return a result.
-
-        Args:
-            task: Natural-language description of what to do.
-        """
 
     def _call_llm(self, prompt: str) -> str:
         """Call the LLM with *prompt* and this agent's system prompt.

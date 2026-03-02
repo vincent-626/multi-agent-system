@@ -82,6 +82,44 @@ def chat(
 
 
 @http_retry
+def chat_messages(
+    messages: list[dict],
+    think: bool | None = None,
+    timeout: int = 300,
+    model: str | None = None,
+) -> str:
+    """Non-streaming multi-turn chat call. Accepts a full message history.
+
+    Used by the ResearchWorker ReAct loop where each step appends assistant
+    and user (tool-result) messages to the conversation.
+
+    Args:
+        messages: Full message list, each dict with ``role`` and ``content``.
+        think:    Override the global LLM_THINK setting for this call.
+        timeout:  Request timeout in seconds.
+        model:    Override the model. Defaults to LLM_MODEL.
+
+    Returns:
+        The full response string.
+
+    Raises:
+        RuntimeError: if Ollama is unreachable after all retries.
+    """
+    resp = requests.post(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        json={
+            "model": model or LLM_MODEL,
+            "messages": messages,
+            "stream": False,
+            "think": LLM_THINK if think is None else think,
+        },
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    return resp.json()["message"]["content"]
+
+
+@http_retry
 def _open_stream(messages: list[dict]) -> requests.Response:
     """Open a streaming HTTP connection to Ollama, with retry on transient errors.
 

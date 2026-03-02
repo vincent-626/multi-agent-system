@@ -13,6 +13,15 @@ class ToolCall(BaseModel):
     reasoning: str  # why the agent chose this tool
 
 
+class WorkerToolCall(BaseModel):
+    """Tool selection decision from a ResearchWorker ReAct loop step."""
+
+    tool: Literal["rag_search", "web_search", "arxiv_search",
+                  "calculator", "unit_converter", "done"]
+    args: dict
+    reasoning: str
+
+
 class RAGResult(BaseModel):
     """Result returned by the RAG Specialist agent."""
 
@@ -56,9 +65,7 @@ class GapAnalysis(BaseModel):
 
     is_sufficient: bool = Field(alias="isSufficient", default=False)
     reasoning: str = ""
-    follow_up_questions: list[str] = Field(alias="gaps", default=[])  # additional doc-retrieval questions
-    web_search_queries: list[str] = Field(alias="webSearchQueries", default=[])   # questions needing live web data
-    arxiv_search_queries: list[ArxivQuery] = Field(alias="arxivSearchQueries", default=[])  # questions needing academic papers
+    follow_up_questions: list[str] = Field(alias="gaps", default=[])
 
 
 class OrchestratorDecision(BaseModel):
@@ -96,6 +103,16 @@ class FinalResponse(BaseModel):
     confidence: str
     from_memory: bool          # whether the answer came from long-term memory
     contexts: list[str] = []   # raw retrieved chunk texts (used by eval pipeline)
+
+
+class EvidenceBundle(BaseModel):
+    """Evidence gathered from a single source for a single sub-question."""
+
+    question: str
+    context: str
+    sources: list[str] = []       # document source files
+    web_sources: list[str] = []   # URLs from web/arXiv searches
+    raw_texts: list[str] = []     # raw chunk texts, used by the eval pipeline
 
 
 class QueryRequest(BaseModel):

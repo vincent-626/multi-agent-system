@@ -22,6 +22,7 @@ RAG_SCORE_THRESHOLD: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.55"))
 # ── Agent behaviour ───────────────────────────────────────────────────────────
 MAX_AGENT_ITERATIONS: int = 8
 MAX_RESEARCH_ITERATIONS: int = int(os.getenv("MAX_RESEARCH_ITERATIONS", "2"))
+MAX_WORKER_STEPS: int = int(os.getenv("MAX_WORKER_STEPS", "5"))
 CONFIDENCE_THRESHOLD: float = 0.6  # below this the orchestrator delegates
 
 # ── Memory ────────────────────────────────────────────────────────────────────
