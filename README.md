@@ -1,6 +1,6 @@
 # Multi-Agent System
 
-A production-minded multi-agent AI system demonstrating orchestrator/specialist architecture, structured outputs, per-user memory, confidence-based routing, web search, and real-time streaming — all running **fully locally** with no cloud APIs.
+A production-minded multi-agent AI system demonstrating orchestrator/specialist architecture, structured outputs, per-user memory, multi-path routing, web and arXiv search, and real-time streaming — running **fully locally** with Ollama and Qdrant (no cloud APIs required for the core system).
 
 ---
 
@@ -17,22 +17,41 @@ FastAPI Server  (src/server.py)
  │
  ▼
 Orchestrator  (src/agents/orchestrator.py)
- ├── Long-Term Memory   (per-user facts → SQLite)
- ├── Short-Term Memory  (in-session step trace)
  │
- ├─[1] Decompose ──────► LLM: split into sub-questions
+ ├─[1] Long-term memory ──► SQLite: inject known user facts into context
  │
- ├─[2] Retrieve ───────► Ollama (embed) + Qdrant (search)
- │      per sub-question  chunks injected as evidence
+ ├─[2] Decompose ──────────► LLM_MODEL: classify intent + plan
+ │                            │
+ │              ┌─────────────┼──────────────────────┐
+ │              ▼             ▼                      ▼
+ │        conversational   tool call            sub-questions
+ │              │         (calculator /              │
+ │              │          unit_converter)            │
+ │              ▼             ▼                      ▼
+ │           respond      execute              [3] Research loop
+ │           directly     → synthesise              │
+ │                                            ┌─────┴──────────────────────┐
+ │                                            ▼                            │
+ │                                     RAG retrieve                        │
+ │                                     (Qdrant hybrid                      │
+ │                                      dense + sparse)                    │
+ │                                            │                            │
+ │                                            ▼                            │
+ │                                     Gap analysis ──── sufficient? ──► break
+ │                                     (FAST_MODEL)         │
+ │                                                    ┌─────┴──────────────┐
+ │                                                    ▼                    ▼
+ │                                            web search            arXiv search
+ │                                            (DuckDuckGo)          (arxiv API)
+ │                                                    └──────┬─────────────┘
+ │                                                           │ (loop back)
  │
- ├─[3] Gap Analysis ───► LLM: is evidence sufficient?
- │      (loops back)       follow-up questions or web queries
- │
- ├─[4] Web Search ─────► DuckDuckGo (no API key)
- │      on gap queries    results injected as evidence
- │
- └─[5] Synthesise ─────► LLM: final answer from all evidence
+ └─[4] Synthesise ─────────► LLM_MODEL: final answer from all evidence
 ```
+
+**Two-model split:**
+- `LLM_MODEL` (`qwen3`, default) — decomposition, synthesis, conversational replies
+- `FAST_MODEL` (`qwen3:1.7b`, default) — gap analysis, web search summarisation (structured JSON tasks)
 
 ---
 
@@ -73,7 +92,7 @@ Use `docker-compose.cloud.yml`, which runs Ollama as a container with full GPU s
 **Automated setup:**
 
 1. Edit `startup.sh` and set `REPO_URL` to your fork.
-2. On the instance, run:
+2. Copy it to the instance and run:
 
 ```bash
 bash startup.sh
@@ -134,14 +153,14 @@ The reference knowledge base is populated with Wikipedia articles on particle ph
 
 ## Evaluation
 
-The eval pipeline measures RAG quality using [RAGAS](https://docs.ragas.io/) with a local Ollama judge — no OpenAI key required.
+The eval pipeline measures RAG quality using [RAGAS](https://docs.ragas.io/) with `gpt-4o-mini` as the judge.
 
 **Metrics (all reference-free):**
 - **Faithfulness** — is the answer grounded in the retrieved chunks?
 - **Response Relevancy** — does the answer actually address the question?
 - **Context Precision** — are the retrieved chunks relevant to the question?
 
-**Prerequisites:** Ollama and Qdrant must be running, at least one document must be ingested, and an OpenAI API key must be set (`gpt-4o-mini` is used as the judge — costs a few cents per run).
+**Prerequisites:** Ollama and Qdrant must be running, at least one document must be ingested, and an OpenAI API key must be exported (`gpt-4o-mini` costs a few cents per full run).
 
 ```bash
 # 1. Install eval dependencies
@@ -150,24 +169,31 @@ uv sync --extra eval
 # 2. Set your OpenAI API key
 export OPENAI_API_KEY=sk-...
 
-# 3. Run the evaluation
+# 3. Run the full evaluation (orchestrator + scoring)
 uv run python -m eval.run_eval
+
+# 3b. Re-run scoring only from a previous results.json (skips the orchestrator)
+uv run python -m eval.run_eval --score-only
 ```
 
-The runner executes each question in `eval/golden_dataset.json` through the full orchestrator, then scores the results with RAGAS. Raw answers and retrieved contexts are saved to `eval/results.json` after step 1, so if RAGAS scoring fails you can re-run scoring without re-querying the orchestrator.
+The runner executes each question in `eval/golden_dataset.json` through the full orchestrator, then scores the results with RAGAS. Raw answers and retrieved contexts are saved to `eval/results.json` after step 1. Final scores (overall, per-category, per-question) are saved to `eval/scores.json`.
 
 **Interpreting scores** (0–1 scale, higher is better):
 - `> 0.7` — good; retrieval and generation are well-aligned
 - `0.5–0.7` — acceptable; some gaps in grounding or relevance
 - `< 0.5` — investigate; likely retrieval misses or hallucination
 
+Note: faithfulness and context precision are not meaningful for calculator and unit converter questions (no retrieved context is expected). Focus on the `factual`, `multi_hop`, and `arxiv_search` categories for RAG quality.
+
 **Adding questions to the golden dataset:**
 
-Edit `eval/golden_dataset.json` and add entries with a `question` and `category` (`factual`, `multi_hop`, or `out_of_scope`):
+Edit `eval/golden_dataset.json` and add entries with a `question` and `category`:
 
 ```json
 {"id": 99, "question": "Your question here", "category": "factual"}
 ```
+
+Supported categories: `factual`, `multi_hop`, `out_of_scope`, `calculator`, `unit_converter`, `arxiv_search`.
 
 ---
 
@@ -177,29 +203,39 @@ Edit `eval/golden_dataset.json` and add entries with a `question` and `category`
 Every agent call, tool invocation, and routing decision is explicit Python. There are no hidden abstractions to debug, no dependency on a framework's release cadence, and the full reasoning trace is trivially inspectable.
 
 **Structured Pydantic outputs**
-Agents return typed models (`RAGResult`, `OrchestratorDecision`, …) rather than raw strings. This enforces a contract between components, makes unit-testing straightforward, and causes parse failures to be loud rather than silent.
+Agents return typed models (`ResearchPlan`, `GapAnalysis`, `FinalResponse`, …) rather than raw strings. This enforces a contract between components, makes unit-testing straightforward, and causes parse failures to be loud rather than silent.
 
-**Research agent architecture**
-The orchestrator operates as a research agent: it decomposes the question into sub-questions, retrieves evidence for each independently, runs a gap analysis to identify what is still missing, issues follow-up queries (doc retrieval or web search), and finally synthesises across all gathered evidence. This handles multi-hop questions that a single retrieval pass would miss — e.g. "compare the risk profiles in these two reports and identify what neither covers".
+**Four-path routing via LLM classification**
+The orchestrator classifies every input in a single LLM call before doing any other work:
 
-The loop is bounded by `MAX_RESEARCH_ITERATIONS` (default 2) to prevent runaway behaviour. This architecture requires a capable reasoning model; the default is `qwen3:8b`, which produces credible decompositions and gap analyses. Smaller models (1–3b) tend to produce shallow sub-questions and unreliable gap detection.
+1. **Conversational** — greetings, chit-chat, meta questions → answered directly without RAG
+2. **Calculator** — arithmetic, math functions, physics constant expressions → evaluated by an AST-based safe calculator, never `eval()`
+3. **Unit converter** — unit conversion requests (energy, mass, cross-section, length, …) → handled by a lookup-table converter
+4. **Research** — everything else → full research loop (RAG + web search + arXiv)
 
-**LLM-based intent classification over a dedicated classifier**
-Before entering the research loop the orchestrator classifies the input and decomposes it into sub-questions in a single LLM call. The alternative — a dedicated lightweight classifier (e.g. fine-tuned BERT/distilBERT) — would be faster and more consistent, but requires labelled training data, a separate model to maintain, and retraining whenever a new route is added.
+Paths 1–3 are fast-paths that bypass the research loop entirely. The alternative — a dedicated lightweight classifier — would require labelled training data and retraining whenever a new route is added; prompting is cheaper to maintain and handles novel input gracefully.
 
-The LLM approach is preferred here because: (1) classification and decomposition happen in one call with no extra round-trip; (2) new routing paths can be added by updating the prompt rather than retraining; (3) no labelled data exists to train a classifier on.
+**Research loop with three evidence sources**
+For research questions the orchestrator iterates up to `MAX_RESEARCH_ITERATIONS` (default 2) times:
 
-The main weakness is unreliability with small models. This is mitigated with a defensive fallback: if decomposition produces no sub-questions and no other path applies, the input is treated as conversational.
+1. **RAG retrieval** — hybrid dense + sparse search over ingested documents
+2. **Gap analysis** — `FAST_MODEL` judges whether the gathered evidence is sufficient; if not, it generates follow-up queries for one or more of:
+   - More document retrieval
+   - Web search (DuckDuckGo, for time-sensitive or factual gaps)
+   - arXiv search (for academic papers and recent research, with optional `sinceYear` filter)
+3. **Synthesis** — `LLM_MODEL` writes the final answer from all accumulated evidence
 
-**Retrieval outside the routing loop**
-Document retrieval (embed + vector search) runs unconditionally before the orchestrator loop whenever documents exist. The retrieved chunks are injected directly into the loop prompt as context; the orchestrator LLM never decides *whether* to search — it only decides what to do *after* seeing the results.
+The loop terminates when the gap analysis declares the evidence sufficient, when no new document chunks are found, or when the iteration cap is reached.
+
+**Two-model split**
+`LLM_MODEL` (`qwen3` by default) handles the tasks that require coherent, complete prose: decomposition, synthesis, and conversational replies. `FAST_MODEL` (`qwen3:1.7b` by default) handles structured JSON tasks where speed matters more than depth: gap analysis and web search summarisation. Both models are configurable via environment variables.
+
+**Retrieval always runs for research questions**
+Document retrieval (embed + vector search) runs unconditionally at the start of the research loop for every sub-question. The orchestrator LLM never decides *whether* to search — it only evaluates what to do *after* seeing the evidence.
 
 This deliberately contradicts the more common agentic pattern of routing to a RAG specialist on demand. The routing-first approach suffers from a fundamental flaw: a small model asked "should I search?" before seeing any evidence will frequently guess wrong and skip retrieval entirely, answering from its own weights even when relevant documents exist. Retrieval is cheap (one embedding call + one vector search — no LLM); routing decisions are not free and are unreliable at small model sizes.
 
-*Trade-off:* retrieval always runs even for questions the documents cannot answer (e.g. arithmetic, current events). This costs one embedding call and one vector search per request when documents are loaded. The upside — guaranteed document visibility — is worth the cost for the target use case.
-
-**Confidence-based routing**
-The orchestrator assigns a `confidence_score` to every decision. After a low-confidence result it can fall back to web search. Systems that acknowledge uncertainty are far safer in regulated or high-stakes contexts.
+*Trade-off:* retrieval always runs even for questions the documents cannot answer. This costs one embedding call and one vector search per sub-question. The upside — guaranteed document visibility — is worth the cost for the target use case.
 
 **SSE streaming**
 The frontend opens a single `fetch()` stream and receives agent steps as they happen. Users see the reasoning trace build in real time rather than staring at a blank screen.
@@ -222,7 +258,7 @@ Document chunks are embedded and stored in Qdrant rather than a general-purpose 
 Postgres + pgvector is the more common production choice and consolidates everything into one service. However, since SQLite carries zero operational cost (it is just a file), the real infrastructure comparison is Qdrant vs Postgres. Qdrant is meaningfully lighter to operate: it ships with sensible defaults, requires no WAL tuning, no `pg_hba.conf`, and no connection pool management. For an on-premises deployment where you want to minimise moving parts, Qdrant + SQLite is a pragmatic choice.
 
 **Per-user long-term memory: fact extraction**
-The system extracts *facts about the user* from each conversation — preferences, background, ongoing projects, constraints — and stores them in SQLite.  At the start of every subsequent session those facts are retrieved and injected into the system prompt, so the assistant remembers who it is talking to rather than just what it has previously answered.Facts accumulate slowly — a few per conversation — and are small enough that the full set can be injected without semantic search or a vector store.  Plain SQLite is sufficient.
+The system extracts *facts about the user* from each conversation — preferences, background, ongoing projects, constraints — and stores them in SQLite. At the start of every subsequent session those facts are retrieved and injected into the system prompt, so the assistant remembers who it is talking to rather than just what it has previously answered. Facts accumulate slowly — a few per conversation — and are small enough that the full set can be injected without semantic search or a vector store. Plain SQLite is sufficient.
 
 **uv for dependency management**
 `uv` manages the virtualenv and produces a `uv.lock` file that pins every transitive dependency at exact versions. `uv sync --frozen` in Docker ensures the container always installs exactly what was tested locally.
@@ -246,7 +282,7 @@ No API key, no rate-limit tiers for moderate use, and entirely client-side — k
 - **UUID identity is not authenticated** — anyone who knows a user's UUID can query their memory; acceptable for a demo, not for a multi-tenant deployment.
 - **DuckDuckGo reliability** — the unofficial DDGS API can be rate-limited or blocked; a production deployment should use a paid search API (Brave, Tavily, …).
 - **Observability** — add [Langfuse](https://langfuse.com/) (self-hostable) for persistent trace history, per-span latency breakdowns, and cross-session analytics. The existing SSE trace covers real-time visibility but traces are lost on page refresh; Langfuse also enables building an evaluation dataset from real queries.
-- **Model routing** — the current two-tier setup (`LLM_MODEL` for synthesis/conversational, `FAST_MODEL` for structured JSON tasks) is a static, hand-coded split. A more sophisticated router would classify each task at runtime — considering query complexity, required output format, and confidence requirements — and select from a wider model menu (e.g. a mid-tier model for gap analysis on complex topics, a larger model only for multi-document synthesis). Routing could also be cost-aware, falling back to a larger model only when a smaller one produces a low-confidence or malformed output.
+- **Model routing** — the two-tier split (`LLM_MODEL` for synthesis/conversational, `FAST_MODEL` for structured JSON tasks) is a static, hand-coded split. A more sophisticated router would classify each task at runtime — considering query complexity, required output format, and confidence requirements — and select from a wider model menu (e.g. a mid-tier model for gap analysis on complex topics, a larger model only for multi-document synthesis). Routing could also be cost-aware, falling back to a larger model only when a smaller one produces a low-confidence or malformed output.
 - **Caching** — the research pipeline makes 5–6 LLM calls per query with no caching. Embedding results, RAG results, and full responses are all candidates for caching to reduce latency and compute cost on repeated or similar queries.
 - **RAG score threshold calibration** — `RAG_SCORE_THRESHOLD` (default 0.55, overridable via env var) is currently set by intuition. For a production system, the threshold should be tuned empirically: collect a representative query set, plot the score distribution of relevant vs. irrelevant chunks, and pick a threshold that maximises recall while holding precision above an acceptable floor. A RAGAS evaluation run provides exactly this data.
 - **Memory: selective injection** — all stored facts are injected on every request. With many sessions this wastes tokens on irrelevant context; a production system would filter facts by relevance (semantic search) or recency before injection.
