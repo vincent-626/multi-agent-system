@@ -3,22 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Multi-Agent System</title>
+  <title>Particle Physics Research Agent</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg-dark:   #1a1d23;
-      --bg-mid:    #22262e;
-      --bg-light:  #f4f5f7;
-      --border:    #2e3340;
+      --bg:        #0d1117;
+      --bg-mid:    #161b22;
+      --bg-card:   #1c2128;
+      --border:    #30363d;
       --accent:    #4f8ef7;
-      --accent-dim:#2a4a8a;
-      --text:      #e2e4e9;
-      --text-dim:  #8b92a5;
-      --green:     #3ecf8e;
-      --yellow:    #f5a623;
-      --red:       #e85d5d;
+      --accent-dim:#1f3a6e;
+      --text:      #e6edf3;
+      --text-dim:  #8b949e;
+      --green:     #3fb950;
+      --yellow:    #d29922;
+      --red:       #f85149;
       --mono:      'Fira Mono', 'Cascadia Code', 'Consolas', monospace;
     }
 
@@ -27,186 +27,194 @@
       flex-direction: column;
       height: 100vh;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg-dark);
+      background: var(--bg);
       color: var(--text);
     }
 
-    /* ── Header ─────────────────────────────────────────────────── */
+    /* ── Header ──────────────────────────────────────────────────── */
     header {
       background: var(--bg-mid);
       border-bottom: 1px solid var(--border);
-      padding: 14px 24px;
+      padding: 0 28px;
+      height: 56px;
       display: flex;
       align-items: center;
       gap: 12px;
       flex-shrink: 0;
     }
-    header h1 { font-size: 1.1rem; font-weight: 700; }
-    header p  { font-size: 0.8rem; color: var(--text-dim); }
 
-    #health-dots { margin-left: auto; display: flex; gap: 10px; align-items: center; font-size: 0.75rem; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
-    .dot.ok  { background: var(--green); }
+    .header-icon {
+      font-size: 1.3rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+    }
+    .header-title h1 {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1;
+    }
+    .header-title p {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-top: 1px;
+    }
+
+    #health-dots {
+      margin-left: auto;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+    .health-item { display: flex; align-items: center; gap: 5px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+    .dot.ok  { background: var(--green); box-shadow: 0 0 6px var(--green); }
     .dot.err { background: var(--red); }
 
-    /* ── Layout ─────────────────────────────────────────────────── */
+    /* ── Layout ──────────────────────────────────────────────────── */
     main {
       display: flex;
       flex: 1;
-      overflow: hidden;
+      overflow-y: auto;
+      flex-direction: column;
     }
 
-    /* ── Sidebar ────────────────────────────────────────────────── */
-    aside {
-      width: 280px;
-      min-width: 240px;
-      background: var(--bg-mid);
-      border-right: 1px solid var(--border);
+    main::-webkit-scrollbar { width: 6px; }
+    main::-webkit-scrollbar-track { background: transparent; }
+    main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .main-inner {
       display: flex;
       flex-direction: column;
-      padding: 20px 16px;
-      gap: 20px;
-      flex-shrink: 0;
-    }
-
-    aside h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
-
-    .upload-zone {
-      border: 2px dashed var(--border);
-      border-radius: 8px;
-      padding: 20px 12px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color .2s;
-      font-size: 0.82rem;
-      color: var(--text-dim);
-    }
-    .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); color: var(--text); }
-    .upload-zone input { display: none; }
-
-    #upload-status {
-      font-size: 0.78rem;
-      color: var(--text-dim);
-      min-height: 18px;
-    }
-
-    /* ── Content area ───────────────────────────────────────────── */
-    section.content {
       flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      background: var(--bg-light);
-      color: #1a1d23;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 20px;
     }
 
     /* ── Chat thread ─────────────────────────────────────────────── */
     #response-area {
       flex: 1;
-      overflow-y: auto;
-      padding: 24px 28px;
+      padding: 28px 0;
       display: flex;
       flex-direction: column;
-      gap: 28px;
+      gap: 32px;
     }
 
-    /* ── Individual chat entry ───────────────────────────────────── */
+    /* ── Individual chat entry ────────────────────────────────────── */
     .chat-entry {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
 
     .user-bubble {
       align-self: flex-end;
-      background: var(--accent);
-      color: #fff;
-      border-radius: 16px 16px 4px 16px;
+      background: var(--accent-dim);
+      border: 1px solid #2d4f9e;
+      color: #c8d8ff;
+      border-radius: 18px 18px 4px 18px;
       padding: 10px 16px;
-      max-width: 75%;
+      max-width: 72%;
       font-size: 0.9rem;
-      line-height: 1.5;
+      line-height: 1.55;
       word-break: break-word;
     }
 
     .assistant-entry {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
-    /* ── Spinner (per entry) ─────────────────────────────────────── */
+    /* ── Spinner ─────────────────────────────────────────────────── */
     .entry-spinner {
       display: none;
       align-items: center;
       gap: 10px;
-      color: var(--accent);
-      font-size: 0.9rem;
-      padding: 8px 0;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      padding: 6px 0;
     }
     .entry-spinner.active { display: flex; }
 
     .spin-ring {
-      width: 18px; height: 18px;
-      border: 2px solid var(--accent-dim);
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
       border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin .7s linear infinite;
+      flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Reasoning trace ─────────────────────────────────────────── */
     details.trace {
-      background: var(--bg-dark);
+      background: var(--bg-mid);
+      border: 1px solid var(--border);
       border-radius: 8px;
       overflow: hidden;
     }
     details.trace summary {
-      padding: 10px 14px;
+      padding: 9px 14px;
       cursor: pointer;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 600;
-      color: var(--text);
+      color: var(--text-dim);
       user-select: none;
-      background: var(--bg-mid);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    details.trace summary:hover { background: var(--border); }
+    details.trace summary::before { content: '▶'; font-size: 0.6rem; }
+    details.trace[open] summary::before { content: '▼'; }
+    details.trace summary:hover { color: var(--text); }
+    .trace-count { font-weight: 400; }
 
-    .trace-rows { padding: 4px 0; }
+    .trace-rows { padding: 2px 0; }
 
     .trace-row {
       display: grid;
-      grid-template-columns: 130px 110px 1fr;
+      grid-template-columns: 120px 120px 1fr;
       gap: 6px;
       padding: 6px 14px;
-      border-bottom: 1px solid var(--border);
+      border-top: 1px solid var(--border);
       font-family: var(--mono);
-      font-size: 0.72rem;
+      font-size: 0.71rem;
       color: var(--text-dim);
     }
-    .trace-row:last-child { border-bottom: none; }
     .trace-row .agent  { color: var(--accent); font-weight: 600; }
     .trace-row .action { color: var(--yellow); }
     .trace-row .output { color: var(--text); white-space: pre-wrap; word-break: break-word; }
 
     /* ── Thinking disclosure ──────────────────────────────────────── */
-    .thinking-details { border-bottom: 1px solid var(--border); }
+    .thinking-details { border-top: 1px solid var(--border); }
     .thinking-details summary {
-      padding: 3px 14px;
+      padding: 4px 14px;
       cursor: pointer;
-      font-size: 0.68rem;
+      font-size: 0.67rem;
       color: var(--text-dim);
       font-style: italic;
       user-select: none;
       list-style: none;
     }
-    .thinking-details summary::before { content: '▶ '; font-style: normal; font-size: 0.6rem; }
+    .thinking-details summary::before { content: '▶ '; font-style: normal; font-size: 0.58rem; }
     .thinking-details[open] summary::before { content: '▼ '; }
     .thinking-details summary:hover { color: var(--text); }
     .thinking-content {
       padding: 6px 14px 10px;
       font-family: var(--mono);
-      font-size: 0.68rem;
+      font-size: 0.67rem;
       color: var(--text-dim);
       white-space: pre-wrap;
       word-break: break-word;
@@ -215,20 +223,21 @@
 
     /* ── Answer card ─────────────────────────────────────────────── */
     .answer-card {
-      background: #fff;
-      border: 1px solid #dde1ea;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 18px 20px;
-      line-height: 1.65;
-      font-size: 0.95rem;
+      line-height: 1.7;
+      font-size: 0.92rem;
       white-space: pre-wrap;
+      color: var(--text);
     }
 
     /* ── Meta badges ─────────────────────────────────────────────── */
     .meta-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
     }
 
     .badge {
@@ -237,139 +246,115 @@
       gap: 4px;
       padding: 3px 10px;
       border-radius: 20px;
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       font-weight: 600;
-      background: #e8ebf2;
-      color: #444;
+      background: var(--bg-mid);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
     }
-    .badge.conf-high   { background: #d4f5e5; color: #1a7a52; }
-    .badge.conf-medium { background: #fef3cc; color: #7a5a00; }
-    .badge.conf-low    { background: #fde0e0; color: #7a1a1a; }
-    .badge.memory      { background: #dde9ff; color: #1a3a8a; }
-    .badge.web         { background: #e6d9fa; color: #4a1a8a; }
-    .badge.source      { background: #e8ebf2; color: #333; }
-    .badge.web-src     { background: #e8ebf2; }
-    .badge.web-src a   { color: var(--accent-dim); text-decoration: none; font-size: 0.72rem; }
+    .badge.conf-high   { background: #0d2a1a; color: #3fb950; border-color: #1a4a2a; }
+    .badge.conf-medium { background: #2a1f00; color: #d29922; border-color: #4a3800; }
+    .badge.conf-low    { background: #2a0a0a; color: #f85149; border-color: #4a1a1a; }
+    .badge.memory      { background: #0d1f3a; color: #79b8ff; border-color: #1a3a6e; }
+    .badge.web         { background: #1a0d2a; color: #b388ff; border-color: #3a1a5a; }
+    .badge.source      { background: var(--bg-mid); color: var(--text-dim); }
+    .badge.web-src     { background: var(--bg-mid); border-color: var(--border); }
+    .badge.web-src a   { color: var(--accent); text-decoration: none; font-size: 0.7rem; }
     .badge.web-src a:hover { text-decoration: underline; }
-    .badge.history-ts  { background: #f0f0f0; color: #888; font-weight: 400; font-style: italic; }
+    .badge.history-ts  { color: var(--text-dim); font-weight: 400; font-style: italic; }
 
     /* ── Input bar ───────────────────────────────────────────────── */
     .input-bar {
-      border-top: 1px solid #dde1ea;
-      background: #fff;
-      padding: 14px 20px;
+      background: var(--bg);
+      padding: 16px 0 20px;
       display: flex;
       gap: 10px;
       flex-shrink: 0;
+      align-items: center;
     }
+
     #question-input {
       flex: 1;
-      border: 1px solid #ccd0da;
-      border-radius: 8px;
-      padding: 10px 14px;
+      background: var(--bg-mid);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 16px;
       font-size: 0.9rem;
+      color: var(--text);
       outline: none;
       transition: border-color .15s;
     }
+    #question-input::placeholder { color: var(--text-dim); }
     #question-input:focus { border-color: var(--accent); }
-    #question-input:disabled { background: #f0f1f4; }
+    #question-input:disabled { opacity: .5; }
 
-    .btn {
+    #submit-btn {
+      width: 42px;
+      height: 42px;
       border: none;
-      border-radius: 8px;
-      padding: 10px 18px;
-      font-size: 0.85rem;
-      font-weight: 600;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
       cursor: pointer;
-      transition: opacity .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity .15s, background .15s;
     }
-    .btn:disabled { opacity: .5; cursor: not-allowed; }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover:not(:disabled) { opacity: .9; }
-    .btn-secondary { background: #e8ebf2; color: #333; }
-    .btn-secondary:hover:not(:disabled) { background: #d8dce8; }
+    #submit-btn:hover:not(:disabled) { opacity: .85; }
+    #submit-btn:disabled { opacity: .4; cursor: not-allowed; }
+    #submit-btn svg { width: 18px; height: 18px; }
   </style>
 </head>
 <body>
 
 <header>
-  <div>
-    <h1>Multi-Agent System</h1>
-    <p>Orchestrator · RAG Specialist · Web Search · Calculator</p>
+  <span class="header-icon">⚛</span>
+  <div class="header-title">
+    <h1>Particle Physics Research Agent</h1>
   </div>
   <div id="health-dots">
-    <span class="dot" id="dot-ollama" title="Ollama"></span> Ollama
-    <span class="dot" id="dot-qdrant" title="Qdrant"></span> Qdrant
+    <div class="health-item"><span class="dot" id="dot-ollama"></span>Ollama</div>
+    <div class="health-item"><span class="dot" id="dot-qdrant"></span>Qdrant</div>
   </div>
 </header>
 
 <main>
-  <!-- ── Sidebar ─────────────────────────────────────────────────── -->
-  <aside>
-    <div>
-      <h2>API Key</h2>
-      <input
-        type="password"
-        id="api-key-input"
-        placeholder="Leave blank if not set"
-        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-dark);color:var(--text);font-size:0.82rem;outline:none;"
-      />
-    </div>
-
-    <div>
-      <h2>Upload Document</h2>
-      <div class="upload-zone" id="upload-zone">
-        <input type="file" id="file-input" accept=".pdf,.txt" />
-        Drop a PDF or TXT here<br/>or click to browse
-      </div>
-      <div id="upload-status"></div>
-    </div>
-  </aside>
-
-  <!-- ── Content ─────────────────────────────────────────────────── -->
-  <section class="content">
-    <div id="response-area">
-      <!-- conversation entries injected here -->
-    </div>
+  <div class="main-inner">
+    <div id="response-area"></div>
 
     <div class="input-bar">
       <input
         type="text"
         id="question-input"
-        placeholder="Ask a question…"
+        placeholder="Ask about particle physics…"
         autocomplete="off"
       />
-      <button class="btn btn-primary" id="submit-btn" onclick="submitQuery()">Ask</button>
-      <button class="btn btn-secondary" id="clear-btn" onclick="clearThread()">Clear</button>
+      <button id="submit-btn" onclick="submitQuery()" title="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="19" x2="12" y2="5"/>
+          <polyline points="5 12 12 5 19 12"/>
+        </svg>
+      </button>
     </div>
-  </section>
+  </div>
 </main>
 
 <script>
-// ── User identity ────────────────────────────────────────────────────────────
+// ── User identity ─────────────────────────────────────────────────────────────
 const USER_ID = (() => {
   const key = 'mas_user_id';
   let id = localStorage.getItem(key);
-  if (!id) { id = crypto.randomUUID(); localStorage.setItem(key, id); }
+  if (!id) {
+    id = (crypto.randomUUID ?? (() => '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+      (c ^ (Math.random() * 16 >> (c / 4))).toString(16))))();
+    localStorage.setItem(key, id);
+  }
   return id;
 })();
 
-// ── API key ───────────────────────────────────────────────────────────────────
-const apiKeyInput = document.getElementById('api-key-input');
-apiKeyInput.value = localStorage.getItem('mas_api_key') || '';
-apiKeyInput.addEventListener('input', () => localStorage.setItem('mas_api_key', apiKeyInput.value));
-function apiKeyParam() {
-  const k = apiKeyInput.value.trim();
-  return k ? '?api_key=' + encodeURIComponent(k) : '';
-}
-function apiKeyQS(existing = '') {
-  const k = apiKeyInput.value.trim();
-  if (!k) return existing;
-  const sep = existing.includes('?') ? '&' : '?';
-  return existing + sep + 'api_key=' + encodeURIComponent(k);
-}
-
-// ── Health check ─────────────────────────────────────────────────────────────
+// ── Health check ──────────────────────────────────────────────────────────────
 async function checkHealth() {
   try {
     const r = await fetch('/health');
@@ -381,50 +366,12 @@ async function checkHealth() {
 checkHealth();
 setInterval(checkHealth, 15000);
 
-// ── Upload ───────────────────────────────────────────────────────────────────
-const uploadZone   = document.getElementById('upload-zone');
-const fileInput    = document.getElementById('file-input');
-const uploadStatus = document.getElementById('upload-status');
-
-uploadZone.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) doUpload(fileInput.files[0]); });
-uploadZone.addEventListener('dragover',  e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-uploadZone.addEventListener('drop', e => {
-  e.preventDefault();
-  uploadZone.classList.remove('drag-over');
-  if (e.dataTransfer.files[0]) doUpload(e.dataTransfer.files[0]);
-});
-
-async function doUpload(file) {
-  uploadStatus.textContent = `Uploading ${file.name}…`;
-  uploadStatus.style.color = '';
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    const r = await fetch('/ingest' + apiKeyParam(), { method: 'POST', body: fd });
-    const d = await r.json();
-    if (r.ok) {
-      uploadStatus.textContent = `✓ ${file.name} — ${d.chunks} chunks ingested`;
-      uploadStatus.style.color = '#1a7a52';
-    } else {
-      uploadStatus.textContent = `✗ ${d.detail || 'Upload failed'}`;
-      uploadStatus.style.color = '#c0392b';
-    }
-  } catch (_) {
-    uploadStatus.textContent = '✗ Network error';
-    uploadStatus.style.color = '#c0392b';
-  }
-}
-
 // ── Chat thread ───────────────────────────────────────────────────────────────
 const thread = document.getElementById('response-area');
 
-// Load history on init
 async function loadHistory() {
   try {
-    const url = apiKeyQS(`/history?user_id=${encodeURIComponent(USER_ID)}`);
-    const r = await fetch(url);
+    const r = await fetch(`/history?user_id=${encodeURIComponent(USER_ID)}`);
     if (!r.ok) return;
     const items = await r.json();
     items.forEach(item => appendHistoryEntry(item));
@@ -446,7 +393,6 @@ function appendHistoryEntry(item) {
   thread.appendChild(entry);
 }
 
-// Build a new empty chat entry, return handles to its inner elements
 function buildEntry(question) {
   const entry = document.createElement('div');
   entry.className = 'chat-entry';
@@ -465,7 +411,7 @@ function buildEntry(question) {
   const traceDetails = document.createElement('details');
   traceDetails.className = 'trace';
   const traceSummary = document.createElement('summary');
-  traceSummary.innerHTML = 'Reasoning Trace <span class="trace-count"></span>';
+  traceSummary.innerHTML = 'Reasoning trace <span class="trace-count"></span>';
   const traceRowsDiv = document.createElement('div');
   traceRowsDiv.className = 'trace-rows';
   traceDetails.appendChild(traceSummary);
@@ -491,18 +437,17 @@ function buildEntry(question) {
 }
 
 function renderAnswer(entry, ev) {
-  const answerCard  = entry.querySelector('.answer-card');
-  const metaRow     = entry.querySelector('.meta-row');
-  const spinner     = entry.querySelector('.entry-spinner');
+  const answerCard   = entry.querySelector('.answer-card');
+  const metaRow      = entry.querySelector('.meta-row');
+  const spinner      = entry.querySelector('.entry-spinner');
   const traceDetails = entry.querySelector('details.trace');
 
-  if (spinner)      { spinner.classList.remove('active'); }
-  if (traceDetails) { traceDetails.open = false; }
+  if (spinner)      spinner.classList.remove('active');
+  if (traceDetails) traceDetails.open = false;
 
   answerCard.textContent = ev.answer;
   answerCard.style.display = 'block';
 
-  // Confidence
   const conf = (ev.confidence || 'medium').toLowerCase();
   metaRow.appendChild(badge(`Confidence: ${conf}`, 'badge conf-' + conf));
 
@@ -538,7 +483,6 @@ function submitQuery() {
   input.value = '';
   setLoading(true);
 
-  // Create and attach the new entry immediately
   const handles = buildEntry(q);
   handles.spinner.classList.add('active');
   thread.appendChild(handles.entry);
@@ -546,7 +490,7 @@ function submitQuery() {
   stepCount = 0;
   scrollToBottom();
 
-  fetch('/query' + apiKeyParam(), {
+  fetch('/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question: q, user_id: USER_ID }),
@@ -578,7 +522,7 @@ function submitQuery() {
       const card = currentEntry.answerCard;
       card.textContent = '⚠ Error: ' + err.message;
       card.style.display = 'block';
-      card.style.borderColor = '#e85d5d';
+      card.style.borderColor = 'var(--red)';
       currentEntry.spinner.classList.remove('active');
     }
   });
@@ -627,7 +571,7 @@ function handleEvent(ev) {
     const card = currentEntry.answerCard;
     card.textContent = '⚠ Error: ' + ev.message;
     card.style.display = 'block';
-    card.style.borderColor = '#e85d5d';
+    card.style.borderColor = 'var(--red)';
     currentEntry.spinner.classList.remove('active');
   }
 }
@@ -641,17 +585,10 @@ function setLoading(on) {
   }
 }
 
-function clearThread() {
-  thread.innerHTML = '';
-  currentEntry = null;
-  stepCount = 0;
-}
-
 function scrollToBottom() {
   thread.scrollTop = thread.scrollHeight;
 }
 
-// ── Utils ─────────────────────────────────────────────────────────────────────
 function badge(text, cls) {
   const el = document.createElement('span');
   el.className = cls;
@@ -667,12 +604,10 @@ function esc(s) {
 
 function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
-// Submit on Enter
 document.getElementById('question-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitQuery(); }
 });
 
-// Load history on init
 loadHistory();
 </script>
 </body>
