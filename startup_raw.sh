@@ -75,14 +75,40 @@ uv sync --frozen
 
 # ── Launch app ────────────────────────────────────────────────────────────────
 echo "==> Starting app..."
-nohup env OLLAMA_BASE_URL=http://localhost:11434 QDRANT_URL=http://localhost:6333 \
+nohup env OLLAMA_BASE_URL=http://localhost:11434 QDRANT_URL=http://localhost:6333 API_KEY="${API_KEY}" \
     uv run uvicorn src.server:app --host 0.0.0.0 --port 8000 \
     > /var/log/app.log 2>&1 &
+sleep 3
+
+# ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
+if [ ! -f /usr/local/bin/cloudflared ]; then
+    echo "==> Installing cloudflared..."
+    curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+        -o /usr/local/bin/cloudflared
+    chmod +x /usr/local/bin/cloudflared
+fi
+
+echo "==> Starting Cloudflare Tunnel..."
+nohup cloudflared tunnel --no-autoupdate --url http://localhost:8000 > /var/log/cloudflared.log 2>&1 &
+
+echo "==> Waiting for tunnel URL..."
+for i in $(seq 1 20); do
+    URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /var/log/cloudflared.log 2>/dev/null | head -1)
+    if [ -n "$URL" ]; then
+        break
+    fi
+    sleep 2
+done
 
 echo ""
-echo "==> Done. Services starting up — model pull may take a few minutes."
-echo "    App : http://$(hostname -I | awk '{print $1}'):8000"
+echo "==> Done."
+if [ -n "${URL:-}" ]; then
+    echo "    URL  : $URL"
+else
+    echo "    URL  : (not yet available — check: grep trycloudflare /var/log/cloudflared.log)"
+fi
 echo "    Logs:"
-echo "      ollama : tail -f /var/log/ollama.log"
-echo "      qdrant : tail -f /var/log/qdrant.log"
-echo "      app    : tail -f /var/log/app.log"
+echo "      ollama      : tail -f /var/log/ollama.log"
+echo "      qdrant      : tail -f /var/log/qdrant.log"
+echo "      app         : tail -f /var/log/app.log"
+echo "      cloudflared : tail -f /var/log/cloudflared.log"
