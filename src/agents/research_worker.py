@@ -9,20 +9,13 @@ import asyncio
 import logging
 
 import src.clients.ollama_client as ollama
-import src.clients.qdrant_client as qdrant
 from src.agents.base import BaseAgent
-from src.config import (
-    COLLECTION_NAME,
-    LLM_MODEL,
-    MAX_WORKER_STEPS,
-    RAG_SCORE_THRESHOLD,
-    TOP_K,
-)
+from src.config import LLM_MODEL, MAX_WORKER_STEPS
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, EvidenceBundle, WorkerToolCall
-from src.tools.sparse import compute_sparse
 from src.tools.arxiv_search import arxiv_search
 from src.tools.calculator import calculate
+from src.tools.rag_search import rag_search
 from src.tools.unit_converter import convert as unit_convert
 from src.tools.web_search import web_search
 
@@ -168,7 +161,7 @@ class ResearchWorker(BaseAgent):
 
         if tool == "rag_search":
             query = args.get("query", "")
-            hits = await self._do_rag_search(query)
+            hits = await rag_search(query)
             new_hits = [
                 h for h in hits
                 if (h["source_file"], h["chunk_index"]) not in seen_chunks
@@ -232,23 +225,6 @@ class ResearchWorker(BaseAgent):
             )
 
         return f"Unknown tool: {tool}"
-
-    async def _do_rag_search(self, query: str) -> list[dict]:
-        """Embed *query* and search Qdrant using hybrid dense + sparse RRF."""
-        try:
-            query_vector = await asyncio.to_thread(ollama.embed, query)
-            sparse_indices, sparse_values = await asyncio.to_thread(compute_sparse, query)
-            return await asyncio.to_thread(
-                qdrant.search,
-                COLLECTION_NAME,
-                query_vector,
-                sparse_indices=sparse_indices,
-                sparse_values=sparse_values,
-                top_k=TOP_K,
-                score_threshold=RAG_SCORE_THRESHOLD,
-            )
-        except Exception:
-            return []
 
     def _format_rag_hits(self, hits: list[dict]) -> str:
         """Format Qdrant hits into a readable context string."""
