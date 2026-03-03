@@ -26,39 +26,39 @@ Orchestrator  (src/agents/orchestrator.py)
  │              ▼             ▼                      ▼
  │        conversational   tool call            sub-questions
  │              │         (calculator /              │
- │              │          unit_converter)            │
+ │              │          unit_converter)           │
  │              ▼             ▼                      ▼
  │           respond      execute              [3] Research loop
- │           directly     → SynthesisAgent          │
+ │           directly     → SynthesisAgent           │
  │                                    ┌──────────────┴──────────────┐
- │                                    │  asyncio.gather (parallel)   │
- │                                    ▼         ▼           ▼        │
- │                              Worker(q1)  Worker(q2)  Worker(q3)   │
- │                                    │         │           │        │
+ │                                    │  asyncio.gather (parallel)  │
+ │                                    ▼         ▼           ▼       │
+ │                              Worker(q1)  Worker(q2)  Worker(q3)  │
+ │                                    │         │           │       │
  │                              ┌─────▼─────────▼───────────▼─────┐ │
- │                              │         ReAct loop               │ │
- │                              │  ┌──────────────────────────┐    │ │
- │                              │  │ Reason: pick next tool   │    │ │
- │                              │  │ Act:    call tool        │    │ │
- │                              │  │ Observe: append result   │    │ │
- │                              │  │ repeat up to MAX_WORKER_ │    │ │
- │                              │  │        STEPS or "done"   │    │ │
- │                              │  └──────────────────────────┘    │ │
- │                              │  Tools available per worker:      │ │
- │                              │  • rag_search  (Qdrant hybrid)    │ │
- │                              │  • web_search  (DuckDuckGo)       │ │
- │                              │  • arxiv_search (arXiv API)       │ │
- │                              │  • calculator  (AST-safe)         │ │
- │                              │  • unit_converter                 │ │
- │                              └──────────────────────────────────┘ │
- │                                    │                              │
- │                                    ▼                              │
- │                              EvidenceBundle[]                     │
- │                                    │                              │
- │                                    ▼                              │
- │                             Gap analysis ──── sufficient? ──► break
- │                             (FAST_MODEL)         │
- │                                                  └──────────────┘
+ │                              │         ReAct loop              │ │
+ │                              │  ┌──────────────────────────┐   │ │
+ │                              │  │ Reason: pick next tool   │   │ │
+ │                              │  │ Act:    call tool        │   │ │
+ │                              │  │ Observe: append result   │   │ │
+ │                              │  │ repeat up to MAX_WORKER_ │   │ │
+ │                              │  │        STEPS or "done"   │   │ │
+ │                              │  └──────────────────────────┘   │ │
+ │                              │  Tools available per worker:    │ │
+ │                              │  • rag_search  (Qdrant hybrid)  │ │
+ │                              │  • web_search  (DuckDuckGo)     │ │
+ │                              │  • arxiv_search (arXiv API)     │ │
+ │                              │  • calculator  (AST-safe)       │ │
+ │                              │  • unit_converter               │ │
+ │                              └─────────────────────────────────┘ │
+ │                                    │                             │
+ │                                    ▼                             │
+ │                              EvidenceBundle[]                    │
+ │                                    │                             │
+ │                                    ▼                             │
+ │                             Gap analysis ──── sufficient? ────────► break
+ │                             (FAST_MODEL)         │               │
+ │                                                  └───────────────┘
  │                                                   (loop back with
  │                                                    new questions)
  │
