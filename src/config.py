@@ -28,6 +28,9 @@ MAX_WORKER_STEPS: int = int(os.getenv("MAX_WORKER_STEPS", "5"))
 # ── Memory ────────────────────────────────────────────────────────────────────
 LONG_TERM_MEMORY_DB: str = os.getenv("LONG_TERM_MEMORY_DB", "memory/long_term.db")
 MEMORY_FACT_TTL_DAYS: int = int(os.getenv("MEMORY_FACT_TTL_DAYS", "90"))
+MEMORY_COLLECTION: str = "user_memory"
+MEMORY_TOP_K: int = int(os.getenv("MEMORY_TOP_K", "10"))
+MEMORY_DEDUP_THRESHOLD: float = float(os.getenv("MEMORY_DEDUP_THRESHOLD", "0.92"))
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 API_KEY: str = os.getenv("API_KEY", "")  # empty string = auth disabled

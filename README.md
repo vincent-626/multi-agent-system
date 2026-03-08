@@ -18,7 +18,7 @@ FastAPI Server  (src/server.py)
  ▼
 Orchestrator  (src/agents/orchestrator.py)
  │
- ├─[1] Long-term memory ──► SQLite: inject known user facts into context
+ ├─[1] Long-term memory ──► Qdrant: embed query, retrieve top-k relevant facts
  │
  ├─[2] Decompose ──────────► LLM_MODEL: classify intent + plan sub-questions
  │                            │
@@ -242,8 +242,8 @@ Supported categories: `factual`, `multi_hop`, `out_of_scope`, `calculator`, `uni
 | **Homogeneous ResearchWorkers** | Each sub-question gets a worker running a ReAct loop with access to all tools. Source selection is an emergent LLM decision based on the question — not a hardcoded routing rule. All workers run concurrently via `asyncio.gather`. *Trade-off:* each tool call is a sequential LLM round-trip; flexibility costs latency. |
 | **Two-model split** | `LLM_MODEL` (`qwen3`) for decomposition, ReAct steps, and synthesis. `FAST_MODEL` (`qwen3:1.7b`) for gap analysis where a small JSON response is all that's needed. Both overridable via env vars. |
 | **Hybrid search (dense + sparse RRF)** | Dense vectors (nomic-embed-text) handle semantic similarity; sparse BM25 vectors handle exact keyword matches. Fused via RRF. Pure semantic search fails on proper nouns and rare terms — BM25's IDF weighting fixes this. ~2× storage cost, negligible at this scale. |
-| **Qdrant + SQLite** | Qdrant for vector search, SQLite for memory and chat history. Postgres + pgvector consolidates both but adds operational overhead (WAL tuning, connection pooling). Qdrant + SQLite has fewer moving parts for a self-hosted deployment. |
-| **Per-user long-term memory** | Facts (preferences, background, projects) are extracted from each conversation and injected into subsequent sessions. The user is remembered across sessions, not just within one. |
+| **Qdrant + SQLite** | Qdrant for document vector search and long-term memory facts; SQLite for chat history. Postgres + pgvector consolidates both but adds operational overhead (WAL tuning, connection pooling). Qdrant + SQLite has fewer moving parts for a self-hosted deployment. |
+| **Per-user long-term memory** | Facts (preferences, background, projects) are extracted from each conversation via `FAST_MODEL` and stored as embeddings in Qdrant. On the next request the top-k most relevant facts (by cosine similarity to the current query) are injected into the system prompt — not all facts indiscriminately. Near-duplicate facts are suppressed at write time (cosine ≥ `MEMORY_DEDUP_THRESHOLD`). Facts expire after `MEMORY_FACT_TTL_DAYS` days. |
 | **Ollama over vLLM** | vLLM's batching advantages require high concurrency to matter. This system's loop is sequential per user, so there's no batch to form. Ollama has first-class Metal support on macOS; vLLM falls back to CPU. Right trade-off for local development; revisit on a dedicated multi-user GPU server. |
 
 ---
@@ -255,4 +255,4 @@ Supported categories: `factual`, `multi_hop`, `out_of_scope`, `calculator`, `uni
 - **RAG threshold not calibrated** — `RAG_SCORE_THRESHOLD` (default 0.55) is set by intuition. It should be tuned against a representative query set, using RAGAS results to find the precision/recall trade-off point.
 - **Observability** — SSE traces are lost on page refresh. Adding [Langfuse](https://langfuse.com/) (self-hostable) would give persistent trace history, per-span latency, and a real query dataset for eval.
 - **Auth is demo-grade** — API key via query parameter, UUID identity unauthenticated. Fine for local use; a multi-tenant deployment needs a proper identity layer.
-- **Memory limitations** — facts are appended but never updated or deduplicated, all facts are injected on every request regardless of relevance, and there is no UI to view or delete them.
+- **Memory limitations** — there is no UI to view or delete stored facts; a user cannot inspect what the system has learned about them.

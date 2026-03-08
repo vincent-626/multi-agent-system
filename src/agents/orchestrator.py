@@ -111,7 +111,7 @@ class Orchestrator(BaseAgent):
         print(f"{'='*60}")
 
         # ── 1. Long-term memory ───────────────────────────────────────────────
-        facts = get_facts(user_id)
+        facts = await asyncio.to_thread(get_facts, user_id, question)
         memory_context = format_for_prompt(facts)
 
         # ── 2. Decompose question into sub-questions ───────────────────────────

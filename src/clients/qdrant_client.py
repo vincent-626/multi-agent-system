@@ -1,6 +1,7 @@
 """Thin wrapper around the qdrant-client library."""
 
 import logging
+import uuid
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
@@ -164,6 +165,116 @@ def search(
             "text": r.payload.get("text", ""),
             "source_file": r.payload.get("source_file", ""),
             "chunk_index": r.payload.get("chunk_index", 0),
+            "score": r.score,
+        })
+    return out
+
+
+@qdrant_retry
+def create_memory_collection(name: str, vector_size: int = 768) -> None:
+    """Create a dense-only memory collection if it does not exist.
+
+    Memory facts use dense-only search (no sparse vectors) — they are short
+    natural-language sentences where semantic similarity is what matters.
+
+    Args:
+        name:        Collection name.
+        vector_size: Embedding dimensionality (default 768 for nomic-embed-text).
+    """
+    client = _get_client()
+    existing = {c.name for c in client.get_collections().collections}
+    if name not in existing:
+        client.create_collection(
+            collection_name=name,
+            vectors_config=qmodels.VectorParams(
+                size=vector_size,
+                distance=qmodels.Distance.COSINE,
+            ),
+        )
+        logger.info("[Qdrant] Created memory collection '%s'", name)
+
+
+@qdrant_retry
+def upsert_memory(collection: str, fact: str, vector: list[float], payload: dict) -> None:
+    """Store a single memory fact as a Qdrant point.
+
+    Args:
+        collection: Target collection name.
+        fact:       The fact text (stored in payload for retrieval).
+        vector:     Dense embedding of *fact*.
+        payload:    Arbitrary metadata (e.g. ``user_id``, ``timestamp``).
+    """
+    client = _get_client()
+    point_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{payload.get('user_id', '')}:{fact}"))
+    client.upsert(
+        collection_name=collection,
+        points=[
+            qmodels.PointStruct(
+                id=point_id,
+                vector=vector,
+                payload={"fact": fact, **payload},
+            )
+        ],
+    )
+
+
+@qdrant_retry
+def search_memory(
+    collection: str,
+    query_vector: list[float],
+    user_id: str,
+    top_k: int = 10,
+    score_threshold: float | None = None,
+    cutoff_timestamp: str | None = None,
+) -> list[dict]:
+    """Retrieve the most relevant memory facts for *user_id*.
+
+    Filters by user_id (and optionally a minimum timestamp) via Qdrant
+    payload filters, then ranks by cosine similarity to *query_vector*.
+
+    Args:
+        collection:       Collection name.
+        query_vector:     Dense embedding of the current query.
+        user_id:          Only return facts belonging to this user.
+        top_k:            Maximum number of facts to return.
+        score_threshold:  Minimum cosine similarity to include a fact.
+        cutoff_timestamp: ISO-8601 string; exclude facts older than this.
+
+    Returns:
+        List of dicts with keys ``fact``, ``timestamp``, and ``score``.
+    """
+    client = _get_client()
+
+    must_conditions: list = [
+        qmodels.FieldCondition(
+            key="user_id",
+            match=qmodels.MatchValue(value=user_id),
+        )
+    ]
+    if cutoff_timestamp:
+        must_conditions.append(
+            qmodels.FieldCondition(
+                key="timestamp",
+                range=qmodels.Range(gte=cutoff_timestamp),
+            )
+        )
+
+    results = client.search(
+        collection_name=collection,
+        query_vector=query_vector,
+        query_filter=qmodels.Filter(must=must_conditions),
+        limit=top_k,
+        score_threshold=score_threshold,
+        with_payload=True,
+    )
+
+    out = []
+    for r in results:
+        if r.payload is None:
+            continue
+        out.append({
+            "fact": r.payload.get("fact", ""),
+            "timestamp": r.payload.get("timestamp", ""),
             "score": r.score,
         })
     return out
