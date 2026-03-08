@@ -71,7 +71,7 @@ async def ingest_endpoint(request: Request, file: UploadFile = File(...), _: Non
     docs_dir = Path("docs")
     docs_dir.mkdir(exist_ok=True)
 
-    dest = docs_dir / (file.filename or "upload.txt")
+    dest = docs_dir / (Path(file.filename).name if file.filename else "upload.txt")
     content = await file.read()
     dest.write_bytes(content)
 
