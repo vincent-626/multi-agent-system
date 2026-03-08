@@ -32,25 +32,7 @@ def web_search(query: str) -> WebSearchResult:
                     }
                 )
 
-        if not results:
-            return WebSearchResult(
-                query=query,
-                results=[],
-                summary="No results found for this query.",
-                confidence="low",
-            )
+        return WebSearchResult(query=query, results=results)
 
-        return WebSearchResult(
-            query=query,
-            results=results,
-            summary="",  # orchestrator fills this in
-            confidence="medium",
-        )
-
-    except Exception as exc:  # noqa: BLE001
-        return WebSearchResult(
-            query=query,
-            results=[],
-            summary=f"Web search failed: {exc}",
-            confidence="low",
-        )
+    except Exception:  # noqa: BLE001
+        return WebSearchResult(query=query, results=[])

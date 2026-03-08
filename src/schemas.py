@@ -22,23 +22,11 @@ class WorkerToolCall(BaseModel):
     reasoning: str
 
 
-class RAGResult(BaseModel):
-    """Result returned by the RAG Specialist agent."""
-
-    answer: str
-    source_chunks: list[str]
-    source_files: list[str]
-    confidence: Literal["high", "medium", "low"]
-    reasoning: str
-
-
 class WebSearchResult(BaseModel):
     """Result returned by the web search tool."""
 
     query: str
     results: list[dict]  # each dict: {title, url, snippet}
-    summary: str          # LLM-synthesised summary of the search results
-    confidence: Literal["high", "medium", "low"]
 
 
 class ResearchPlan(BaseModel):
@@ -67,19 +55,6 @@ class GapAnalysis(BaseModel):
     reasoning: str = ""
     follow_up_questions: list[str] = Field(alias="gaps", default=[])
 
-
-class OrchestratorDecision(BaseModel):
-    """A single routing decision made by the Orchestrator."""
-
-    action: Literal[
-        "use_calculator",
-        "use_web_search",
-        "answer_directly",
-        "done",
-    ]
-    reasoning: str
-    confidence_score: float = Field(ge=0.0, le=1.0)
-    subtask: str | None = None  # populated when delegating
 
 
 class AgentStep(BaseModel):

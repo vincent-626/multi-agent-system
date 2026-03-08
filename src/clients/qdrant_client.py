@@ -86,40 +86,6 @@ def upsert(collection: str, points: list[dict]) -> None:
     client.upsert(collection_name=collection, points=qdrant_points)
 
 
-@qdrant_retry
-def search_with_filter(
-    collection: str,
-    query_vector: list[float],
-    query_filter: qmodels.Filter,
-    top_k: int = 5,
-    score_threshold: float | None = None,
-) -> list[tuple[int, float]]:
-    """Search a collection with a payload filter, returning (point_id, score) pairs.
-
-    Used for memory search where the caller needs to join results back to SQLite
-    by point ID.
-
-    Args:
-        collection:      Collection name.
-        query_vector:    Embedding of the query.
-        query_filter:    Qdrant filter applied before scoring (e.g. user_id match).
-        top_k:           Maximum number of results to return.
-        score_threshold: Minimum similarity score; results below this are dropped.
-
-    Returns:
-        List of ``(point_id, score)`` tuples, highest score first.
-    """
-    client = _get_client()
-    results = client.search(
-        collection_name=collection,
-        query_vector=("dense", query_vector),
-        query_filter=query_filter,
-        limit=top_k,
-        score_threshold=score_threshold,
-        with_payload=False,  # IDs are enough; metadata lives in SQLite
-    )
-    return [(int(r.id), r.score) for r in results]
-
 
 @qdrant_retry
 def search(
