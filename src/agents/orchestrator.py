@@ -11,8 +11,8 @@ import src.clients.ollama_client as ollama
 from src.agents.base import BaseAgent
 from src.agents.research_worker import ResearchWorker
 from src.agents.synthesis_agent import SynthesisAgent
-from src.config import FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITERATIONS, TEMPERATURE_JSON
-from src.memory.chat_history import save_message
+from src.config import CHAT_HISTORY_TURNS, FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITERATIONS, TEMPERATURE_JSON
+from src.memory.chat_history import get_messages, save_message
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, EvidenceBundle, FinalResponse, GapAnalysis, ResearchPlan
@@ -70,6 +70,17 @@ Rules:
 }"""
 
 
+def _format_history(messages: list[dict]) -> str:
+    """Format recent Q&A turns for injection into the decompose prompt."""
+    if not messages:
+        return ""
+    lines = ["Recent conversation history:"]
+    for m in messages:
+        lines.append(f"User: {m['question']}")
+        lines.append(f"Assistant: {m['answer'][:300]}")
+    return "\n".join(lines)
+
+
 class Orchestrator(BaseAgent):
     """Slim coordinator that decomposes questions and dispatches parallel ResearchWorkers.
 
@@ -110,12 +121,14 @@ class Orchestrator(BaseAgent):
         print(f"[Orchestrator] Question: {question}")
         print(f"{'='*60}")
 
-        # ── 1. Long-term memory ───────────────────────────────────────────────
+        # ── 1. Long-term memory + recent history ──────────────────────────────
         facts = await asyncio.to_thread(get_facts, user_id, question)
         memory_context = format_for_prompt(facts)
+        recent = await asyncio.to_thread(get_messages, user_id, CHAT_HISTORY_TURNS)
+        history_context = _format_history(recent)
 
         # ── 2. Decompose question into sub-questions ───────────────────────────
-        plan = await self._decompose(question, memory_context)
+        plan = await self._decompose(question, memory_context, history_context)
         yield self._log_step(
             action="decompose",
             input_text=question,
@@ -271,11 +284,15 @@ class Orchestrator(BaseAgent):
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
-    async def _decompose(self, question: str, memory_context: str) -> ResearchPlan:
+    async def _decompose(self, question: str, memory_context: str, history_context: str = "") -> ResearchPlan:
         """Break *question* into sub-questions via an LLM call."""
-        prompt = (
-            f"{memory_context}\n\n" if memory_context else ""
-        ) + f"Question: {question}\n\nDecompose this into sub-questions. Respond with JSON only."
+        parts = []
+        if history_context:
+            parts.append(history_context)
+        if memory_context:
+            parts.append(memory_context)
+        parts.append(f"Question: {question}\n\nDecompose this into sub-questions. Respond with JSON only.")
+        prompt = "\n\n".join(parts)
         raw = await asyncio.to_thread(ollama.chat, prompt, system=_decompose_system(), think=False, model=LLM_MODEL, temperature=TEMPERATURE_JSON)
         try:
             return ollama.parse_json_response(raw, ResearchPlan)
