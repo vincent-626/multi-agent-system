@@ -10,7 +10,7 @@ from typing import Generator, Type, TypeVar
 import requests
 from pydantic import BaseModel
 
-from src.config import EMBED_MODEL, LLM_MODEL, LLM_THINK, OLLAMA_BASE_URL
+from src.config import EMBED_MODEL, LLM_MODEL, LLM_THINK, OLLAMA_BASE_URL, TEMPERATURE_SYNTHESIS
 from src.clients.retry import http_retry
 
 T = TypeVar("T", bound=BaseModel)
@@ -43,6 +43,7 @@ def chat(
     think: bool | None = None,
     timeout: int = 300,
     model: str | None = None,
+    temperature: float = TEMPERATURE_SYNTHESIS,
 ) -> str:
     """Non-streaming chat call. Returns the full response string.
 
@@ -74,6 +75,7 @@ def chat(
             "messages": messages,
             "stream": False,
             "think": LLM_THINK if think is None else think,
+            "options": {"temperature": temperature},
         },
         timeout=timeout,
     )
@@ -87,6 +89,7 @@ def chat_messages(
     think: bool | None = None,
     timeout: int = 300,
     model: str | None = None,
+    temperature: float = TEMPERATURE_SYNTHESIS,
 ) -> str:
     """Non-streaming multi-turn chat call. Accepts a full message history.
 
@@ -112,6 +115,7 @@ def chat_messages(
             "messages": messages,
             "stream": False,
             "think": LLM_THINK if think is None else think,
+            "options": {"temperature": temperature},
         },
         timeout=timeout,
     )

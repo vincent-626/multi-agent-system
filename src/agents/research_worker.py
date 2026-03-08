@@ -10,7 +10,7 @@ import logging
 
 import src.clients.ollama_client as ollama
 from src.agents.base import BaseAgent
-from src.config import LLM_MODEL, MAX_WORKER_STEPS
+from src.config import LLM_MODEL, MAX_WORKER_STEPS, TEMPERATURE_JSON
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, EvidenceBundle, WorkerToolCall
 from src.tools.arxiv_search import arxiv_search
@@ -110,6 +110,7 @@ class ResearchWorker(BaseAgent):
                     False,  # think=False — reliable JSON tool selection
                     300,
                     LLM_MODEL,
+                    TEMPERATURE_JSON,
                 )
             except Exception as exc:
                 logger.warning("[ResearchWorker] LLM call failed at step %d: %s", step_idx, exc)

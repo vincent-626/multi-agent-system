@@ -11,7 +11,7 @@ import src.clients.ollama_client as ollama
 from src.agents.base import BaseAgent
 from src.agents.research_worker import ResearchWorker
 from src.agents.synthesis_agent import SynthesisAgent
-from src.config import FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITERATIONS
+from src.config import FAST_MODEL, LLM_MODEL, MAX_RESEARCH_ITERATIONS, TEMPERATURE_JSON
 from src.memory.chat_history import save_message
 from src.memory.long_term import extract_and_save, format_for_prompt, get_facts
 from src.memory.short_term import ShortTermMemory
@@ -276,7 +276,7 @@ class Orchestrator(BaseAgent):
         prompt = (
             f"{memory_context}\n\n" if memory_context else ""
         ) + f"Question: {question}\n\nDecompose this into sub-questions. Respond with JSON only."
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_decompose_system(), think=False, model=LLM_MODEL)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_decompose_system(), think=False, model=LLM_MODEL, temperature=TEMPERATURE_JSON)
         try:
             return ollama.parse_json_response(raw, ResearchPlan)
         except ValueError:
@@ -306,5 +306,5 @@ class Orchestrator(BaseAgent):
             "Is this sufficient to fully answer the original question? "
             "If not, what specific gaps remain? Respond with JSON only."
         )
-        raw = await asyncio.to_thread(ollama.chat, prompt, system=_GAP_SYSTEM, think=False, model=FAST_MODEL)
+        raw = await asyncio.to_thread(ollama.chat, prompt, system=_GAP_SYSTEM, think=False, model=FAST_MODEL, temperature=TEMPERATURE_JSON)
         return ollama.parse_json_response(raw, GapAnalysis)

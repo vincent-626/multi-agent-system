@@ -8,6 +8,8 @@ LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen3")          # capable model — sy
 FAST_MODEL: str = os.getenv("FAST_MODEL", "qwen3:1.7b")   # fast model — structured JSON, summaries
 EMBED_MODEL: str = os.getenv("EMBED_MODEL", "nomic-embed-text")
 LLM_THINK: bool = os.getenv("LLM_THINK", "true").lower() == "true"
+TEMPERATURE_JSON: float = float(os.getenv("TEMPERATURE_JSON", "0.1"))   # structured JSON calls
+TEMPERATURE_SYNTHESIS: float = float(os.getenv("TEMPERATURE_SYNTHESIS", "0.7"))  # free-text answer
 
 # ── Qdrant ────────────────────────────────────────────────────────────────────
 QDRANT_URL: str = os.getenv("QDRANT_URL", "http://localhost:6333")

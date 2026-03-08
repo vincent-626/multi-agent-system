@@ -5,6 +5,7 @@ from datetime import date
 
 import src.clients.ollama_client as ollama
 from src.agents.base import BaseAgent
+from src.config import TEMPERATURE_SYNTHESIS
 from src.memory.short_term import ShortTermMemory
 from src.schemas import EvidenceBundle
 
@@ -60,6 +61,6 @@ class SynthesisAgent(BaseAgent):
             "Write a clear, complete, well-structured answer based on the evidence above."
         )
         raw = await asyncio.to_thread(
-            ollama.chat, prompt, system=_synth_system(), think=False, timeout=600
+            ollama.chat, prompt, system=_synth_system(), think=False, timeout=600, temperature=TEMPERATURE_SYNTHESIS
         )
         return ollama.strip_thinking(raw), ollama.extract_thinking(raw)
