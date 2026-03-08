@@ -38,6 +38,8 @@ RATE_LIMIT_HISTORY: str = os.getenv("RATE_LIMIT_HISTORY", "30/minute")
 
 # ── Web search ────────────────────────────────────────────────────────────────
 WEB_SEARCH_MAX_RESULTS: int = 5
+WEB_SEARCH_TIMEOUT: int = int(os.getenv("WEB_SEARCH_TIMEOUT", "30"))
 
 # ── arXiv search ──────────────────────────────────────────────────────────────
 ARXIV_MAX_RESULTS: int = int(os.getenv("ARXIV_MAX_RESULTS", "5"))
+ARXIV_SEARCH_TIMEOUT: int = int(os.getenv("ARXIV_SEARCH_TIMEOUT", "30"))

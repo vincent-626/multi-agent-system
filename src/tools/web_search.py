@@ -2,7 +2,7 @@
 
 from duckduckgo_search import DDGS
 
-from src.config import WEB_SEARCH_MAX_RESULTS
+from src.config import WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_TIMEOUT
 from src.schemas import WebSearchResult
 
 
@@ -22,7 +22,7 @@ def web_search(query: str) -> WebSearchResult:
     """
     try:
         results: list[dict] = []
-        with DDGS() as ddgs:
+        with DDGS(timeout=WEB_SEARCH_TIMEOUT) as ddgs:
             for r in ddgs.text(query, max_results=WEB_SEARCH_MAX_RESULTS):
                 results.append(
                     {

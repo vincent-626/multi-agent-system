@@ -10,7 +10,7 @@ import logging
 
 import src.clients.ollama_client as ollama
 from src.agents.base import BaseAgent
-from src.config import LLM_MODEL, MAX_WORKER_STEPS, TEMPERATURE_JSON
+from src.config import ARXIV_SEARCH_TIMEOUT, LLM_MODEL, MAX_WORKER_STEPS, TEMPERATURE_JSON
 from src.memory.short_term import ShortTermMemory
 from src.schemas import AgentStep, EvidenceBundle, WorkerToolCall
 from src.tools.arxiv_search import arxiv_search
@@ -200,7 +200,10 @@ class ResearchWorker(BaseAgent):
         if tool == "arxiv_search":
             query = args.get("query", "")
             since_year = args.get("since_year")
-            results = await asyncio.to_thread(arxiv_search, query, since_year=since_year)
+            results = await asyncio.wait_for(
+                asyncio.to_thread(arxiv_search, query, since_year=since_year),
+                timeout=ARXIV_SEARCH_TIMEOUT,
+            )
             if not results:
                 return "No arXiv papers found."
             web_sources.extend(r["url"] for r in results)
