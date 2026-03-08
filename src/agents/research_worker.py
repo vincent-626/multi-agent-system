@@ -131,9 +131,13 @@ class ResearchWorker(BaseAgent):
             if tool_call.tool == "done":
                 break
 
-            result = await self._execute_tool(
-                tool_call, seen_chunks, sources, web_sources, raw_texts
-            )
+            try:
+                result = await self._execute_tool(
+                    tool_call, seen_chunks, sources, web_sources, raw_texts
+                )
+            except Exception as exc:
+                logger.warning("[ResearchWorker] Tool '%s' failed at step %d: %s", tool_call.tool, step_idx, exc)
+                result = f"Tool '{tool_call.tool}' failed — skipping."
             tool_results.append(result)
 
             messages.append({"role": "assistant", "content": raw})
