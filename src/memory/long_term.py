@@ -68,6 +68,9 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_facts_user_id ON memory_facts(user_id)"
         )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_unique ON memory_facts(user_id, fact)"
+        )
 
 
 # Initialise on import so callers never have to think about it.
@@ -146,7 +149,7 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
     now = datetime.now(tz=timezone.utc).isoformat()
     with _connect() as conn:
         conn.executemany(
-            "INSERT INTO memory_facts (user_id, fact, timestamp) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO memory_facts (user_id, fact, timestamp) VALUES (?, ?, ?)",
             [(user_id, fact, now) for fact in facts],
         )
 
