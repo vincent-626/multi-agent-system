@@ -164,7 +164,7 @@ class Orchestrator(BaseAgent):
                 )
                 yield response
                 await asyncio.to_thread(save_message, user_id, question, response)
-                await asyncio.to_thread(extract_and_save, user_id, question, response)
+                asyncio.create_task(asyncio.to_thread(extract_and_save, user_id, question, response))
                 return
             elif tc.tool == "unit_converter":
                 args = tc.args
@@ -267,7 +267,7 @@ class Orchestrator(BaseAgent):
         )
         yield response
         await asyncio.to_thread(save_message, user_id, question, response)
-        await asyncio.to_thread(extract_and_save, user_id, question, response)
+        asyncio.create_task(asyncio.to_thread(extract_and_save, user_id, question, response))
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
