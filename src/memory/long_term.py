@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Generator
 import src.clients.ollama_client as ollama
 
-from src.config import LONG_TERM_MEMORY_DB, FAST_MODEL
+from src.config import FAST_MODEL, LONG_TERM_MEMORY_DB, TEMPERATURE_JSON
 from src.schemas import FinalResponse
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,7 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
             prompt=prompt,
             model=FAST_MODEL,
             think=False,
+            temperature=TEMPERATURE_JSON,
             system=(
                 "You extract memorable facts about users from conversations. "
                 "Be concise and specific. Only record what the user revealed about themselves."
