@@ -27,6 +27,7 @@ MAX_WORKER_STEPS: int = int(os.getenv("MAX_WORKER_STEPS", "5"))
 
 # ── Memory ────────────────────────────────────────────────────────────────────
 LONG_TERM_MEMORY_DB: str = os.getenv("LONG_TERM_MEMORY_DB", "memory/long_term.db")
+MEMORY_FACT_TTL_DAYS: int = int(os.getenv("MEMORY_FACT_TTL_DAYS", "90"))
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 API_KEY: str = os.getenv("API_KEY", "")  # empty string = auth disabled

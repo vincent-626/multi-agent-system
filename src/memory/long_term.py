@@ -23,12 +23,12 @@ Index: idx_facts_user_id ON memory_facts(user_id)
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Generator
 import src.clients.ollama_client as ollama
 
-from src.config import FAST_MODEL, LONG_TERM_MEMORY_DB, TEMPERATURE_JSON
+from src.config import FAST_MODEL, LONG_TERM_MEMORY_DB, MEMORY_FACT_TTL_DAYS, TEMPERATURE_JSON
 from src.schemas import FinalResponse
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,9 @@ init_db()
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def get_facts(user_id: str) -> list[str]:
-    """Return all stored facts for *user_id*, oldest first.
+    """Return stored facts for *user_id* that are within the TTL, oldest first.
+
+    Facts older than MEMORY_FACT_TTL_DAYS are excluded.
 
     Args:
         user_id: Opaque user identifier.
@@ -85,10 +87,11 @@ def get_facts(user_id: str) -> list[str]:
     Returns:
         List of fact strings in chronological order.
     """
+    cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=MEMORY_FACT_TTL_DAYS)).isoformat()
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT fact FROM memory_facts WHERE user_id = ? ORDER BY timestamp ASC",
-            (user_id,),
+            "SELECT fact FROM memory_facts WHERE user_id = ? AND timestamp >= ? ORDER BY timestamp ASC",
+            (user_id, cutoff),
         ).fetchall()
     return [row["fact"] for row in rows]
 
