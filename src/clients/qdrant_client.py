@@ -225,7 +225,7 @@ def search_memory(
     user_id: str,
     top_k: int = 10,
     score_threshold: float | None = None,
-    cutoff_timestamp: str | None = None,
+    cutoff_timestamp: float | None = None,
 ) -> list[dict]:
     """Retrieve the most relevant memory facts for *user_id*.
 
@@ -238,7 +238,7 @@ def search_memory(
         user_id:          Only return facts belonging to this user.
         top_k:            Maximum number of facts to return.
         score_threshold:  Minimum cosine similarity to include a fact.
-        cutoff_timestamp: ISO-8601 string; exclude facts older than this.
+        cutoff_timestamp: Unix timestamp (seconds); exclude facts older than this.
 
     Returns:
         List of dicts with keys ``fact``, ``timestamp``, and ``score``.

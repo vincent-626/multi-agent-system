@@ -71,7 +71,7 @@ def get_facts(user_id: str, query: str) -> list[str]:
     """
     cutoff = (
         datetime.now(tz=timezone.utc) - timedelta(days=MEMORY_FACT_TTL_DAYS)
-    ).isoformat()
+    ).timestamp()
 
     try:
         query_vector = ollama.embed(query)
@@ -137,7 +137,7 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
     if not candidates:
         return []
 
-    now = datetime.now(tz=timezone.utc).isoformat()
+    now = datetime.now(tz=timezone.utc).timestamp()
     saved: list[str] = []
 
     for fact in candidates:
