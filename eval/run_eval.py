@@ -178,11 +178,14 @@ def _print_report(
         print(f"  retrieved chunks : {len(contexts)}")
         for col in metric_cols:
             val = row.get(col)
-            if val is None or (isinstance(val, float) and math.isnan(val)):
+            try:
+                fval = float(val)
+                if math.isnan(fval):
+                    raise ValueError
+                print(f"  {col:<35} {fval:.3f}")
+            except (TypeError, ValueError):
                 suffix = " (no ground truth)" if col == "answer_correctness" and not has_gt else ""
                 print(f"  {col:<35} N/A{suffix}")
-            else:
-                print(f"  {col:<35} {val:.3f}")
 
     print("\n" + "─" * 70)
     print("RAGAS OVERALL AVERAGES")
