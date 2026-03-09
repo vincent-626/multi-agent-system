@@ -164,7 +164,8 @@ def _print_report(
     ground_truths: dict[str, str],
     scores_df,
 ) -> None:
-    metric_cols = [c for c in scores_df.columns if c not in ("user_input", "response", "retrieved_contexts")]
+    _exclude = {"user_input", "response", "retrieved_contexts"}
+    metric_cols = [c for c in scores_df.select_dtypes(include="number").columns if c not in _exclude]
 
     print("\n" + "=" * 70)
     print("RAGAS EVALUATION RESULTS")
@@ -234,7 +235,8 @@ def _save_scores(
     scores_df,
 ) -> None:
     from datetime import datetime
-    metric_cols = [c for c in scores_df.columns if c not in ("user_input", "response", "retrieved_contexts", "_category")]
+    _exclude = {"user_input", "response", "retrieved_contexts", "_category"}
+    metric_cols = [c for c in scores_df.select_dtypes(include="number").columns if c not in _exclude]
     scores_df["_category"] = [categories[q] for q, _, _ in rag_results]
 
     rag_per_question = []
