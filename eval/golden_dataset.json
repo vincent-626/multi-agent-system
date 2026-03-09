@@ -45,7 +45,7 @@
     "id": 8,
     "question": "In which country is CERN headquartered, and how many member states does it have?",
     "category": "factual",
-    "ground_truth": "CERN is headquartered in Switzerland, on the Franco-Swiss border near Geneva, and has 23 member states."
+    "ground_truth": "CERN is headquartered in Switzerland, on the Franco-Swiss border near Geneva, and has 24 member states."
   },
   {
     "id": 9,
