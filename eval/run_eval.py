@@ -161,6 +161,7 @@ def _print_report(
     rag_results: list[tuple[str, str, list[str]]],
     tool_scored: list[dict],
     categories: dict[str, str],
+    ground_truths: dict[str, str],
     scores_df,
 ) -> None:
     metric_cols = [c for c in scores_df.columns if c not in ("user_input", "response", "retrieved_contexts")]
@@ -340,7 +341,7 @@ def main() -> None:
     # Step 2b: score tool questions with exact match
     tool_scored = _score_tools(tool_results, expected_answers, categories)
 
-    _print_report(rag_results, tool_scored, categories, scores_df)
+    _print_report(rag_results, tool_scored, categories, ground_truths, scores_df)
     _save_scores(rag_results, tool_scored, categories, scores_df)
 
 
