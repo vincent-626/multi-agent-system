@@ -14,12 +14,22 @@ def _synth_system() -> str:
     return (
         f"Today's date is {date.today().isoformat()}.\n"
         "You are a synthesis agent. Given a research question and all gathered evidence,\n"
-        "write a clear, well-structured final answer for the user.\n"
+        "write a clear, accurate answer for the user.\n"
+        "\n"
+        "Length and scope rules (most important):\n"
+        "- Match your answer length to the complexity of the question.\n"
+        "  A simple factual question (e.g. 'What are the six quark flavours?') deserves\n"
+        "  1-3 sentences. A broad conceptual question may warrant more.\n"
+        "- Answer exactly what was asked. Do not add background, history, or tangential\n"
+        "  detail that the question did not request.\n"
+        "- If a tool result (calculator, unit converter) is present in the evidence,\n"
+        "  report that result directly. Do not recalculate or convert units.\n"
+        "\n"
+        "Quality rules:\n"
         "- Cite source files where relevant.\n"
         "- If evidence is conflicting, acknowledge it.\n"
-        "- Be concise but complete. Do not pad with filler.\n"
-        "- If the evidence does not contain information relevant to the question, say so clearly and honestly.\n"
-        "  Do not speculate, invent details, or draw on knowledge beyond what the evidence provides."
+        "- If the evidence does not contain information relevant to the question, say so\n"
+        "  clearly and honestly. Do not speculate or draw on knowledge beyond the evidence."
     )
 
 
@@ -58,7 +68,7 @@ class SynthesisAgent(BaseAgent):
             (f"{memory_context}\n\n" if memory_context else "")
             + f"Research question: {question}\n\n"
             f"All gathered evidence:\n{evidence_text}\n\n"
-            "Write a clear, complete, well-structured answer based on the evidence above."
+            "Write a concise, accurate answer based on the evidence above. Match the length to the scope of the question."
         )
         raw = await asyncio.to_thread(
             ollama.chat, prompt, system=_synth_system(), think=False, timeout=600, temperature=TEMPERATURE_SYNTHESIS
