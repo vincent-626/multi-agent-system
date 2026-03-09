@@ -70,6 +70,33 @@ Rules:
 }"""
 
 
+async def _summarise_bundle(bundle: EvidenceBundle) -> EvidenceBundle:
+    """Condense a bundle's raw evidence into a tight summary for synthesis.
+
+    Replaces the accumulated tool-result text with a 3-5 sentence summary
+    focused on the sub-question. Sources and raw_texts are preserved unchanged
+    so deduplication and eval scoring are unaffected.
+    """
+    if not bundle.context:
+        return bundle
+    prompt = (
+        f"Sub-question: {bundle.question}\n\n"
+        f"Evidence:\n{bundle.context}\n\n"
+        "Summarise the evidence above in 3-5 concise sentences that directly answer "
+        "the sub-question. Preserve key facts and numbers. Discard tangential detail."
+    )
+    raw = await asyncio.to_thread(
+        ollama.chat, prompt, model=FAST_MODEL, think=False, temperature=TEMPERATURE_JSON
+    )
+    return EvidenceBundle(
+        question=bundle.question,
+        context=ollama.strip_thinking(raw),
+        sources=bundle.sources,
+        web_sources=bundle.web_sources,
+        raw_texts=bundle.raw_texts,
+    )
+
+
 def _format_history(messages: list[dict]) -> str:
     """Format recent Q&A turns for injection into the decompose prompt."""
     if not messages:
@@ -259,7 +286,10 @@ class Orchestrator(BaseAgent):
 
             pending_questions = gap.follow_up_questions
 
-        # ── 6. Synthesise ─────────────────────────────────────────────────────
+        # ── 6. Summarise evidence bundles before synthesis ────────────────────
+        evidence = list(await asyncio.gather(*(_summarise_bundle(b) for b in evidence)))
+
+        # ── 7. Synthesise ─────────────────────────────────────────────────────
         answer, thinking = await self._synth.run(question, evidence, memory_context)
         yield self._log_step(
             action="synthesise",
@@ -268,7 +298,7 @@ class Orchestrator(BaseAgent):
             thinking=thinking,
         )
 
-        # ── 7. Yield final response and persist facts ─────────────────────────
+        # ── 8. Yield final response and persist facts ─────────────────────────
         response = FinalResponse(
             answer=answer,
             steps=short_term.get_history(),
