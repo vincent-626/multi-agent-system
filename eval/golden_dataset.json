@@ -2,62 +2,74 @@
   {
     "id": 1,
     "question": "What are the four fundamental forces of nature, and which particles mediate each one?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "The four fundamental forces are: gravity (mediated by the hypothetical graviton), electromagnetism (mediated by the photon), the strong nuclear force (mediated by gluons), and the weak nuclear force (mediated by the W and Z bosons)."
   },
   {
     "id": 2,
     "question": "When was the Higgs boson experimentally confirmed, and at which facility?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "The Higgs boson was experimentally confirmed in 2012 at CERN's Large Hadron Collider (LHC), announced jointly by the ATLAS and CMS experiments."
   },
   {
     "id": 3,
     "question": "What are the six flavours of quarks?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "The six quark flavours are up, down, charm, strange, top (truth), and bottom (beauty)."
   },
   {
     "id": 4,
     "question": "What is the approximate circumference of the Large Hadron Collider?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "The Large Hadron Collider has a circumference of approximately 27 kilometres."
   },
   {
     "id": 5,
     "question": "What does the Standard Model of particle physics describe?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "The Standard Model describes the elementary particles that make up matter and three of the four fundamental forces — electromagnetic, weak nuclear, and strong nuclear — that govern their interactions. It does not incorporate gravity."
   },
   {
     "id": 6,
     "question": "What happens when a particle meets its corresponding antiparticle?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "When a particle meets its antiparticle they annihilate each other, converting their combined mass-energy into other particles, typically photons."
   },
   {
     "id": 7,
     "question": "What is quantum superposition?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "Quantum superposition is the principle that a quantum system can exist in multiple states simultaneously until a measurement is made, at which point it collapses into one definite state."
   },
   {
     "id": 8,
     "question": "In which country is CERN headquartered, and how many member states does it have?",
-    "category": "factual"
+    "category": "factual",
+    "ground_truth": "CERN is headquartered in Switzerland, on the Franco-Swiss border near Geneva, and has 24 member states."
   },
   {
     "id": 9,
     "question": "Which particle mediates the strong nuclear force, and how does it relate to quark confinement inside hadrons?",
-    "category": "multi_hop"
+    "category": "multi_hop",
+    "ground_truth": "Gluons mediate the strong nuclear force. They bind quarks together inside hadrons, and unlike other forces the strong force does not diminish with distance, making it impossible to isolate a free quark — a phenomenon known as quark confinement."
   },
   {
     "id": 10,
     "question": "The Standard Model successfully unifies three of the four fundamental forces — which force does it fail to incorporate, and which theory currently describes that force?",
-    "category": "multi_hop"
+    "category": "multi_hop",
+    "ground_truth": "The Standard Model fails to incorporate gravity. Gravity is currently described by Einstein's general theory of relativity, which has not been successfully unified with quantum mechanics."
   },
   {
     "id": 11,
     "question": "What are hadrons, and how do baryons and mesons differ in their quark composition?",
-    "category": "multi_hop"
+    "category": "multi_hop",
+    "ground_truth": "Hadrons are composite particles made of quarks bound by the strong force. Baryons (such as protons and neutrons) are composed of three quarks, while mesons are composed of one quark and one antiquark."
   },
   {
     "id": 12,
     "question": "How do particle accelerators like the LHC provide experimental evidence for theoretical predictions made by the Standard Model?",
-    "category": "multi_hop"
+    "category": "multi_hop",
+    "ground_truth": "Particle accelerators collide particles at high energies to produce new particles whose properties can be measured and compared against Standard Model predictions. The 2012 discovery of the Higgs boson at the LHC is the most prominent example."
   },
   {
     "id": 13,
@@ -109,5 +121,5 @@
     "question": "Convert the proton mass from MeV/c² to atomic mass units.",
     "category": "unit_converter",
     "expected_answer": "1.00728"
-  },
+  }
 ]

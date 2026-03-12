@@ -30,6 +30,7 @@ Environment variables:
 
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 
@@ -39,6 +40,7 @@ from ragas import EvaluationDataset, SingleTurnSample, evaluate
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.llms import LangchainLLMWrapper
 from ragas.metrics import (
+    AnswerCorrectness,
     Faithfulness,
     LLMContextPrecisionWithoutReference,
     ResponseRelevancy,
@@ -65,12 +67,12 @@ RAG_CATEGORIES = {"factual", "multi_hop", "out_of_scope"}
 
 # ── Orchestrator runner ───────────────────────────────────────────────────────
 
-async def _run_question(question: str) -> tuple[str, list[str]]:
+async def _run_question(question: str, user_id: str) -> tuple[str, list[str]]:
     """Run the orchestrator on a single question. Returns (answer, contexts)."""
     memory = ShortTermMemory()
     orchestrator = Orchestrator(memory=memory)
     response: FinalResponse | None = None
-    async for item in orchestrator.run(question=question, short_term=memory, user_id="eval"):
+    async for item in orchestrator.run(question=question, short_term=memory, user_id=user_id):
         if isinstance(item, FinalResponse):
             response = item
     if response is None:
@@ -79,13 +81,15 @@ async def _run_question(question: str) -> tuple[str, list[str]]:
 
 
 async def _collect_results(
-    questions: list[str],
+    entries: list[dict],
 ) -> list[tuple[str, str, list[str]]]:
     """Run all questions sequentially. Returns list of (question, answer, contexts)."""
     results = []
-    for i, question in enumerate(questions, 1):
-        print(f"[{i}/{len(questions)}] {question[:70]}...")
-        answer, contexts = await _run_question(question)
+    for i, entry in enumerate(entries, 1):
+        question = entry["question"]
+        user_id = f"eval_{entry['id']}"  # isolated per question — no memory contamination
+        print(f"[{i}/{len(entries)}] {question[:70]}...")
+        answer, contexts = await _run_question(question, user_id)
         print(f"         {len(contexts)} chunk(s) retrieved | answer: {answer[:80].strip()}...")
         results.append((question, answer, contexts))
     return results
@@ -124,6 +128,7 @@ def _build_ragas_components() -> tuple:
         OllamaEmbeddings(model=EMBED_MODEL, base_url=OLLAMA_BASE_URL)
     )
     metrics = [
+        AnswerCorrectness(llm=llm),
         Faithfulness(llm=llm),
         ResponseRelevancy(llm=llm, embeddings=embeddings),
         LLMContextPrecisionWithoutReference(llm=llm),
@@ -136,12 +141,14 @@ MAX_CONTEXTS_FOR_EVAL = 10  # cap to avoid overly long precision prompts
 
 def _build_dataset(
     results: list[tuple[str, str, list[str]]],
+    ground_truths: dict[str, str],
 ) -> EvaluationDataset:
     samples: list = [
         SingleTurnSample(
             user_input=question,
             response=answer,
             retrieved_contexts=contexts[:MAX_CONTEXTS_FOR_EVAL] if contexts else ["No relevant context retrieved."],
+            reference=ground_truths.get(question),  # None for out_of_scope — AnswerCorrectness returns NaN
         )
         for question, answer, contexts in results
     ]
@@ -154,9 +161,11 @@ def _print_report(
     rag_results: list[tuple[str, str, list[str]]],
     tool_scored: list[dict],
     categories: dict[str, str],
+    ground_truths: dict[str, str],
     scores_df,
 ) -> None:
-    metric_cols = [c for c in scores_df.columns if c not in ("user_input", "response", "retrieved_contexts")]
+    _exclude = {"user_input", "response", "retrieved_contexts"}
+    metric_cols = [c for c in scores_df.select_dtypes(include="number").columns if c not in _exclude]
 
     print("\n" + "=" * 70)
     print("RAGAS EVALUATION RESULTS")
@@ -165,11 +174,19 @@ def _print_report(
     for i, (question, _, contexts) in enumerate(rag_results):
         row = scores_df.iloc[i]
         cat = categories[question]
+        has_gt = question in ground_truths
         print(f"\n[{cat}] {question}")
         print(f"  retrieved chunks : {len(contexts)}")
         for col in metric_cols:
             val = row.get(col)
-            print(f"  {col:<35} {val:.3f}" if val is not None else f"  {col:<35} N/A")
+            try:
+                fval = float(val)
+                if math.isnan(fval):
+                    raise ValueError
+                print(f"  {col:<35} {fval:.3f}")
+            except (TypeError, ValueError):
+                suffix = " (no ground truth)" if col == "answer_correctness" and not has_gt else ""
+                print(f"  {col:<35} N/A{suffix}")
 
     print("\n" + "─" * 70)
     print("RAGAS OVERALL AVERAGES")
@@ -218,7 +235,8 @@ def _save_scores(
     scores_df,
 ) -> None:
     from datetime import datetime
-    metric_cols = [c for c in scores_df.columns if c not in ("user_input", "response", "retrieved_contexts", "_category")]
+    _exclude = {"user_input", "response", "retrieved_contexts", "_category"}
+    metric_cols = [c for c in scores_df.select_dtypes(include="number").columns if c not in _exclude]
     scores_df["_category"] = [categories[q] for q, _, _ in rag_results]
 
     rag_per_question = []
@@ -285,6 +303,7 @@ def main() -> None:
     golden = json.loads(GOLDEN_PATH.read_text())
     categories = {entry["question"]: entry["category"] for entry in golden}
     expected_answers = {entry["question"]: entry.get("expected_answer", "") for entry in golden}
+    ground_truths = {entry["question"]: entry["ground_truth"] for entry in golden if "ground_truth" in entry}
 
     print(f"Judge model : {JUDGE_MODEL}")
     print(f"Embed model : {EMBED_MODEL}")
@@ -297,11 +316,10 @@ def main() -> None:
         results = [(r["question"], r["answer"], r["contexts"]) for r in raw]
         print(f"Loaded {len(results)} results from {RESULTS_PATH.name}")
     else:
-        questions = [entry["question"] for entry in golden]
-        print(f"Loaded {len(questions)} questions from {GOLDEN_PATH.name}\n")
+        print(f"Loaded {len(golden)} questions from {GOLDEN_PATH.name}\n")
 
         print("── Step 1/2: running orchestrator ──────────────────────────────────")
-        results = asyncio.run(_collect_results(questions))
+        results = asyncio.run(_collect_results(golden))
 
         RESULTS_PATH.write_text(
             json.dumps(
@@ -321,14 +339,14 @@ def main() -> None:
     print(f"  Tools : {len(tool_results)} questions\n")
 
     _, _, metrics = _build_ragas_components()
-    dataset = _build_dataset(rag_results)
+    dataset = _build_dataset(rag_results, ground_truths)
     scores = evaluate(dataset=dataset, metrics=metrics)
     scores_df = scores.to_pandas()  # type: ignore[union-attr]
 
     # Step 2b: score tool questions with exact match
     tool_scored = _score_tools(tool_results, expected_answers, categories)
 
-    _print_report(rag_results, tool_scored, categories, scores_df)
+    _print_report(rag_results, tool_scored, categories, ground_truths, scores_df)
     _save_scores(rag_results, tool_scored, categories, scores_df)
 
 

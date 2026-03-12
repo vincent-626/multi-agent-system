@@ -1,104 +1,101 @@
-"""Persistent per-user long-term memory.
+"""Persistent per-user long-term memory backed by Qdrant.
 
 After each conversation the LLM extracts memorable facts about the user —
-preferences, background, ongoing projects, constraints — and stores them in
-SQLite.  On the next session those facts are retrieved and injected into the
-system prompt so the assistant remembers who it is talking to.
+preferences, background, ongoing projects, constraints — and stores them as
+embedding vectors in Qdrant.  On the next session the top-k most relevant
+facts (by cosine similarity to the current query) are retrieved and injected
+into the system prompt so the assistant remembers who it is talking to.
 
-This is different from a Q&A cache: facts describe *the user*, not past
-answers, so they improve every future response rather than only short-
-circuiting repeated questions.
+This approach gives us three things over the old SQLite store:
+- Relevance filtering: only facts semantically related to the query are
+  injected, keeping the context window focused.
+- Semantic deduplication: a new fact is skipped when it is too similar to
+  an existing one (cosine similarity ≥ MEMORY_DEDUP_THRESHOLD).
+- Scalability: Qdrant handles an unbounded fact store efficiently.
 
-SQLite schema
--------------
-Table: memory_facts
-  id        INTEGER PRIMARY KEY AUTOINCREMENT
-  user_id   TEXT NOT NULL
-  fact      TEXT NOT NULL
-  timestamp TEXT NOT NULL  -- ISO-8601 UTC
-
-Index: idx_facts_user_id ON memory_facts(user_id)
+Each point in the collection has the payload:
+    {
+        "fact":      str,   -- the fact sentence
+        "user_id":   str,   -- opaque user identifier
+        "timestamp": str,   -- ISO-8601 UTC
+    }
 """
 
 import logging
-import sqlite3
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Generator
-import src.clients.ollama_client as ollama
+from datetime import datetime, timedelta, timezone
 
-from src.config import LONG_TERM_MEMORY_DB, FAST_MODEL
+import src.clients.ollama_client as ollama
+import src.clients.qdrant_client as qdrant
+
+from src.config import (
+    FAST_MODEL,
+    MEMORY_COLLECTION,
+    MEMORY_DEDUP_THRESHOLD,
+    MEMORY_FACT_TTL_DAYS,
+    MEMORY_TOP_K,
+    TEMPERATURE_JSON,
+)
 from src.schemas import FinalResponse
 
 logger = logging.getLogger(__name__)
 
 
-# ── Connection helper ──────────────────────────────────────────────────────────
+# ── Collection initialisation ─────────────────────────────────────────────────
 
-@contextmanager
-def _connect() -> Generator[sqlite3.Connection, None, None]:
-    """Open a short-lived SQLite connection, commit on success, close always."""
-    path = Path(LONG_TERM_MEMORY_DB)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+def _init_collection() -> None:
+    """Create the memory collection in Qdrant if it does not exist."""
     try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+        qdrant.create_memory_collection(MEMORY_COLLECTION)
+    except Exception as exc:
+        logger.warning("Could not initialise memory collection: %s", exc)
 
 
-# ── Schema initialisation ──────────────────────────────────────────────────────
-
-def init_db() -> None:
-    """Create the SQLite memory_facts table and index if they do not exist."""
-    with _connect() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memory_facts (
-                id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id   TEXT NOT NULL,
-                fact      TEXT NOT NULL,
-                timestamp TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_facts_user_id ON memory_facts(user_id)"
-        )
+_init_collection()
 
 
-# Initialise on import so callers never have to think about it.
-init_db()
+# ── Public API ────────────────────────────────────────────────────────────────
 
+def get_facts(user_id: str, query: str) -> list[str]:
+    """Return the top-k most relevant stored facts for *user_id*.
 
-# ── Public API ─────────────────────────────────────────────────────────────────
-
-def get_facts(user_id: str) -> list[str]:
-    """Return all stored facts for *user_id*, oldest first.
+    Embeds *query* and performs a vector search filtered by user_id and TTL.
+    Only facts within MEMORY_FACT_TTL_DAYS and above the default score
+    threshold are returned.
 
     Args:
         user_id: Opaque user identifier.
+        query:   The current user question (used for relevance ranking).
 
     Returns:
-        List of fact strings in chronological order.
+        List of fact strings ordered by relevance (most relevant first).
     """
-    with _connect() as conn:
-        rows = conn.execute(
-            "SELECT fact FROM memory_facts WHERE user_id = ? ORDER BY timestamp ASC",
-            (user_id,),
-        ).fetchall()
-    return [row["fact"] for row in rows]
+    cutoff = (
+        datetime.now(tz=timezone.utc) - timedelta(days=MEMORY_FACT_TTL_DAYS)
+    ).timestamp()
+
+    try:
+        query_vector = ollama.embed(query)
+        results = qdrant.search_memory(
+            collection=MEMORY_COLLECTION,
+            query_vector=query_vector,
+            user_id=user_id,
+            top_k=MEMORY_TOP_K,
+            cutoff_timestamp=cutoff,
+        )
+    except Exception as exc:
+        logger.warning("Memory retrieval failed: %s", exc)
+        return []
+
+    return [r["fact"] for r in results]
 
 
 def extract_and_save(user_id: str, question: str, response: FinalResponse) -> list[str]:
     """Extract memorable facts from a conversation and persist them.
 
     Runs a lightweight LLM pass over the Q&A to pull out anything worth
-    remembering about the user (preferences, context, background, projects).
-    Results are appended to the user's fact store in SQLite.
+    remembering about the user.  Each candidate fact is embedded and checked
+    for near-duplicates already in the store (cosine similarity ≥
+    MEMORY_DEDUP_THRESHOLD).  Novel facts are upserted into Qdrant.
 
     Args:
         user_id:  Opaque user identifier.
@@ -126,28 +123,52 @@ def extract_and_save(user_id: str, question: str, response: FinalResponse) -> li
             prompt=prompt,
             model=FAST_MODEL,
             think=False,
+            temperature=TEMPERATURE_JSON,
             system=(
                 "You extract memorable facts about users from conversations. "
                 "Be concise and specific. Only record what the user revealed about themselves."
             ),
         )
-        facts = ollama.parse_json_list(raw)
+        candidates = ollama.parse_json_list(raw)
     except Exception as exc:
         logger.warning("Fact extraction failed: %s", exc)
         return []
 
-    if not facts:
+    if not candidates:
         return []
 
-    now = datetime.now(tz=timezone.utc).isoformat()
-    with _connect() as conn:
-        conn.executemany(
-            "INSERT INTO memory_facts (user_id, fact, timestamp) VALUES (?, ?, ?)",
-            [(user_id, fact, now) for fact in facts],
-        )
+    now = datetime.now(tz=timezone.utc).timestamp()
+    saved: list[str] = []
 
-    logger.info("Saved %d fact(s) for user %s.", len(facts), user_id[:8])
-    return facts
+    for fact in candidates:
+        try:
+            fact_vector = ollama.embed(fact)
+
+            # Semantic dedup: skip if a very similar fact already exists
+            existing = qdrant.search_memory(
+                collection=MEMORY_COLLECTION,
+                query_vector=fact_vector,
+                user_id=user_id,
+                top_k=1,
+                score_threshold=MEMORY_DEDUP_THRESHOLD,
+            )
+            if existing:
+                logger.debug("Skipping duplicate fact (score=%.3f): %s", existing[0]["score"], fact)
+                continue
+
+            qdrant.upsert_memory(
+                collection=MEMORY_COLLECTION,
+                fact=fact,
+                vector=fact_vector,
+                payload={"user_id": user_id, "timestamp": now},
+            )
+            saved.append(fact)
+        except Exception as exc:
+            logger.warning("Failed to save fact '%s': %s", fact[:60], exc)
+
+    if saved:
+        logger.info("Saved %d fact(s) for user %s.", len(saved), user_id[:8])
+    return saved
 
 
 def format_for_prompt(facts: list[str]) -> str:
